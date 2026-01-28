@@ -37,7 +37,7 @@ type Order struct {
 	OutletID          int            `gorm:"not null;column:outletId" json:"outletId"`
 	TotalAmount       float64        `gorm:"not null;column:totalAmount" json:"totalAmount"`
 	PaymentMethod     PaymentMethod  `gorm:"type:text;not null;column:paymentMethod" json:"paymentMethod"`
-	Status            OrderStatus    `gorm:"type:text;not null;column:status" json:"status"`
+	Status            string         `gorm:"type:text;not null;column:status" json:"status"`
 	CreatedAt         time.Time      `gorm:"autoCreateTime;column:createdAt" json:"createdAt"`
 	Type              OrderType      `gorm:"type:text;not null;column:type" json:"type"`
 	DeliveryDate      *time.Time     `gorm:"column:deliveryDate" json:"deliveryDate"`

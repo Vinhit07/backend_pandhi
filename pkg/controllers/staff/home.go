@@ -357,7 +357,7 @@ func UpdateOrder(c *gin.Context) {
 
 	// === CANCELLED ===
 	if req.Status == "CANCELLED" {
-		if order.Status != models.OrderStatusPending {
+		if order.Status != string(models.OrderStatusPending) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"message": fmt.Sprintf("Cannot cancel order. Order status is %s", order.Status),
 			})
@@ -446,7 +446,7 @@ func UpdateOrder(c *gin.Context) {
 
 	// === DELIVERED ===
 	if req.Status == "DELIVERED" {
-		if order.Status == models.OrderStatusCancelled {
+		if order.Status == string(models.OrderStatusCancelled) {
 			c.JSON(http.StatusBadRequest, gin.H{"message": "Cannot mark a cancelled order as delivered."})
 			return
 		}
@@ -529,7 +529,7 @@ func UpdateOrder(c *gin.Context) {
 
 	// === PARTIAL_CANCEL ===
 	if req.Status == "PARTIAL_CANCEL" {
-		if order.Status != models.OrderStatusPartiallyDelivered {
+		if order.Status != string(models.OrderStatusPartiallyDelivered) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"message": fmt.Sprintf("Cannot partially cancel order. Order status is %s", order.Status),
 			})

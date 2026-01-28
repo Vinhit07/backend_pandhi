@@ -246,7 +246,7 @@ func CustomerAppCancelOrder(c *gin.Context) {
 	}
 
 	// Check if order can be cancelled
-	if order.Status != models.OrderStatusPending {
+	if order.Status != string(models.OrderStatusPending) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"message": "Only pending orders can be cancelled",
 			"status":  order.Status,

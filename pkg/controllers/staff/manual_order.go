@@ -60,7 +60,7 @@ func AddManualOrder(c *gin.Context) {
 			OutletID:      req.OutletID,
 			TotalAmount:   req.TotalAmount,
 			PaymentMethod: models.PaymentMethod(req.PaymentMethod),
-			Status:        models.OrderStatusDelivered,
+			Status:        string(models.OrderStatusDelivered),
 			Type:          models.OrderTypeManual,
 			CustomerID:    nil,
 			DeliveryDate:  &today,

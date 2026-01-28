@@ -444,7 +444,7 @@ func CustomerAppOrder(c *gin.Context) {
 			OutletID:      req.OutletID,
 			TotalAmount:   finalTotalAmount,
 			PaymentMethod: models.PaymentMethod(req.PaymentMethod),
-			Status:        models.OrderStatusPending,
+			Status:        string(models.OrderStatusPending),
 			Type:          models.OrderTypeApp,
 			DeliveryDate:  &deliveryDate,
 			DeliverySlot:  &deliverySlot,
