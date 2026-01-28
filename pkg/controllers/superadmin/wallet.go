@@ -1,0 +1,143 @@
+package superadmin
+
+import (
+	"backend_pandhi/pkg/database"
+	"backend_pandhi/pkg/models"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+)
+
+// GetCustomersWithWallet returns customers with wallet details
+func GetCustomersWithWallet(c *gin.Context) {
+	outletIDStr := c.Param("outletId")
+	outletID, err := strconv.Atoi(outletIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Provide outletId"})
+		return
+	}
+
+	var users []models.User
+	database.DB.Where("role = ? AND outlet_id = ?", models.RoleCustomer, outletID).
+		Preload("CustomerInfo.Wallet").
+		Find(&users)
+
+	formatted := make([]gin.H, len(users))
+	for i, user := range users {
+		var customerId *int
+		var walletId *int
+		balance := 0.0
+		totalRecharged := 0.0
+		totalUsed := 0.0
+		var lastRecharged *time.Time
+		var lastOrder *time.Time
+
+		if user.CustomerInfo != nil {
+			customerId = &user.CustomerInfo.ID
+			if user.CustomerInfo.Wallet != nil {
+				walletId = &user.CustomerInfo.Wallet.ID
+				balance = user.CustomerInfo.Wallet.Balance
+				totalRecharged = user.CustomerInfo.Wallet.TotalRecharged
+				totalUsed = user.CustomerInfo.Wallet.TotalUsed
+				lastRecharged = user.CustomerInfo.Wallet.LastRecharged
+				lastOrder = user.CustomerInfo.Wallet.LastOrder
+			}
+		}
+
+		formatted[i] = gin.H{
+			"userId":         user.ID,
+			"name":           user.Name,
+			"email":          user.Email,
+			"phone":          user.Phone,
+			"customerId":     customerId,
+			"walletId":       walletId,
+			"balance":        balance,
+			"totalRecharged": totalRecharged,
+			"totalUsed":      totalUsed,
+			"lastRecharged":  lastRecharged,
+			"lastOrder":      lastOrder,
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Customers with wallet fetched successfully",
+		"count":   len(formatted),
+		"data":    formatted,
+	})
+}
+
+// GetRechargeHistoryByOutlet returns recharge history for outlet
+func GetRechargeHistoryByOutlet(c *gin.Context) {
+	outletIDStr := c.Param("outletId")
+	outletID, err := strconv.Atoi(outletIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Provide outletId"})
+		return
+	}
+
+	var users []models.User
+	database.DB.Where("role = ? AND outlet_id = ?", models.RoleCustomer, outletID).
+		Preload("CustomerInfo.Wallet.Transactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at DESC")
+		}).
+		Find(&users)
+
+	history := []gin.H{}
+	for _, user := range users {
+		if user.CustomerInfo != nil && user.CustomerInfo.Wallet != nil {
+			for _, txn := range user.CustomerInfo.Wallet.Transactions {
+				history = append(history, gin.H{
+					"customerName": user.Name,
+					"rechargeId":   txn.ID,
+					"amount":       txn.Amount,
+					"date":         txn.CreatedAt,
+					"method":       txn.Method,
+					"status":       txn.Status,
+				})
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Recharge history fetched successfully",
+		"count":   len(history),
+		"data":    history,
+	})
+}
+
+// GetOrdersPaidViaWallet returns all wallet-paid orders
+func GetOrdersPaidViaWallet(c *gin.Context) {
+	var orders []models.Order
+	database.DB.Where("payment_method = ?", models.PaymentMethodWallet).
+		Preload("Customer.User").
+		Order("created_at DESC").
+		Find(&orders)
+
+	result := make([]gin.H, len(orders))
+	for i, order := range orders {
+		customerName := "Unknown"
+		if order.Customer != nil {
+			database.DB.Preload("User").First(&order.Customer, order.Customer.ID)
+			if order.Customer.User.ID > 0 {
+				customerName = order.Customer.User.Name
+			}
+		}
+
+		result[i] = gin.H{
+			"orderId":       order.ID,
+			"customerName":  customerName,
+			"orderTotal":    order.TotalAmount,
+			"orderDate":     order.CreatedAt,
+			"paymentMethod": order.PaymentMethod,
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Orders paid via wallet fetched successfully",
+		"count":   len(result),
+		"data":    result,
+	})
+}
