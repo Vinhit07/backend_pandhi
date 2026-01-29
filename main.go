@@ -135,6 +135,8 @@ func setupCORS(router *gin.Engine) {
 		"http://127.0.0.1:5173",
 		"http://localhost:8081",
 		"http://127.0.0.1:8081",
+		"http://localhost:3001",
+		"http://127.0.0.1:3001",
 	}
 
 	var allowOrigins []string
@@ -152,12 +154,20 @@ func setupCORS(router *gin.Engine) {
 	}
 
 	corsConfig := cors.Config{
-		AllowOrigins:     allowOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
 		AllowHeaders:     []string{"Content-Type", "Authorization", "X-Requested-With"},
 		ExposeHeaders:    []string{"Content-Range", "X-Content-Range"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
+	}
+
+	if isProduction {
+		corsConfig.AllowOrigins = allowOrigins
+	} else {
+		// In development, trust any localhost origin
+		corsConfig.AllowOriginFunc = func(origin string) bool {
+			return true // Allow all origins in development
+		}
 	}
 
 	router.Use(cors.New(corsConfig))

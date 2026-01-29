@@ -28,12 +28,14 @@ func GetOutletSalesReport(c *gin.Context) {
 	to, _ := time.Parse("2006-01-02", req.To)
 
 	type SalesData struct {
-		ProductID   int
-		ProductName string
-		TotalOrders int
+		ProductID   int     `json:"productId"`
+		ProductName string  `json:"productName"`
+		TotalOrders int     `json:"totalOrders"`
+		Quantity    int     `json:"quantity"`
+		Revenue     float64 `json:"revenue"`
 	}
 	var sales []SalesData
-	database.DB.Table(`"OrderItem"`).Select(`"OrderItem"."productId", "Product".name as product_name, SUM("OrderItem".quantity) as total_orders`).
+	database.DB.Table(`"OrderItem"`).Select(`"OrderItem"."productId", "Product".name as product_name, COUNT(DISTINCT "OrderItem"."orderId") as total_orders, SUM("OrderItem".quantity) as quantity, SUM("OrderItem".quantity * "OrderItem"."unitPrice") as revenue`).
 		Joins(`JOIN "Order" ON "Order".id = "OrderItem"."orderId"`).
 		Joins(`JOIN "Product" ON "Product".id = "OrderItem"."productId"`).
 		Where(`"Order"."outletId" = ? AND "Order"."createdAt" >= ? AND "Order"."createdAt" <= ? AND "Order".status IN ?`,
@@ -62,9 +64,9 @@ func GetOutletRevenueByItems(c *gin.Context) {
 	to, _ := time.Parse("2006-01-02", req.To)
 
 	type RevenueData struct {
-		ProductID   int
-		ProductName string
-		Revenue     float64
+		ProductID   int     `json:"productId"`
+		ProductName string  `json:"productName"`
+		Revenue     float64 `json:"revenue"`
 	}
 	var revenue []RevenueData
 	database.DB.Table(`"OrderItem"`).Select(`"OrderItem"."productId", "Product".name as product_name, SUM("OrderItem".quantity * "OrderItem"."unitPrice") as revenue`).

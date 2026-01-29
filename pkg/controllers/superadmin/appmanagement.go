@@ -78,9 +78,9 @@ func UpdateOutletAppFeatures(c *gin.Context) {
 	database.DB.Transaction(func(tx *gorm.DB) error {
 		for _, f := range req.Features {
 			var existing models.OutletAppManagement
-			err := tx.Where("outlet_id = ? AND feature = ?", req.OutletID, f.Feature).First(&existing).Error
+			err := tx.Where(`"outletId" = ? AND feature = ?`, req.OutletID, f.Feature).First(&existing).Error
 			if err == nil {
-				tx.Model(&existing).Update("is_enabled", f.IsEnabled)
+				tx.Model(&existing).Update("isEnabled", f.IsEnabled)
 			} else {
 				newFeature := models.OutletAppManagement{
 					OutletID:  req.OutletID,
@@ -181,7 +181,7 @@ func GetAvailableDatesAndSlots(c *gin.Context) {
 	next30Days := today.AddDate(0, 0, 30)
 
 	var nonAvailable []models.OutletAvailability
-	database.DB.Where("outlet_id = ? AND date >= ? AND date <= ?",
+	database.DB.Where(`"outletId" = ? AND date >= ? AND date <= ?`,
 		outletID, today, next30Days).Find(&nonAvailable)
 
 	allSlots := []string{"SLOT_11_12", "SLOT_12_13", "SLOT_13_14", "SLOT_14_15", "SLOT_15_16", "SLOT_16_17"}

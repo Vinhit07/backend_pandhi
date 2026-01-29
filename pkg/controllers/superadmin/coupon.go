@@ -96,7 +96,7 @@ func GetCoupons(c *gin.Context) {
 	}
 
 	var coupons []models.Coupon
-	database.DB.Where("outlet_id = ?", outletID).Find(&coupons)
+	database.DB.Where(`"outletId" = ?`, outletID).Find(&coupons)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Coupons fetched successfully",

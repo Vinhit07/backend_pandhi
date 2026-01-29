@@ -17,7 +17,7 @@ import (
 // GetDashboardOverview returns overall statistics
 func GetDashboardOverview(c *gin.Context) {
 	var totalActiveOutlets int64
-	database.DB.Model(&models.Outlet{}).Where("is_active = ?", true).Count(&totalActiveOutlets)
+	database.DB.Model(&models.Outlet{}).Where(`"isActive" = ?`, true).Count(&totalActiveOutlets)
 
 	var totalRevenue float64
 	database.DB.Model(&models.Order{}).
@@ -203,10 +203,10 @@ func GetTopSellingItems(c *gin.Context) {
 	to = to.Add(23*time.Hour + 59*time.Minute)
 
 	type ProductStats struct {
-		ProductID    int
-		ProductName  string
-		TotalOrders  int
-		TotalRevenue float64
+		ProductID    int     `json:"productId"`
+		ProductName  string  `json:"productName"`
+		TotalOrders  int     `json:"totalOrders"`
+		TotalRevenue float64 `json:"totalRevenue"`
 	}
 	var stats []ProductStats
 	database.DB.Table("\"OrderItem\"").
@@ -297,8 +297,8 @@ func formatHour(hour int) string {
 // GetPendingAdminVerifications returns unverified admins
 func GetPendingAdminVerifications(c *gin.Context) {
 	var admins []models.Admin
-	database.DB.Select("id, email, name, phone, aadhar_url, pan_url, created_at").
-		Where("is_verified = ?", false).
+	database.DB.Select(`id, email, name, phone, "aadharUrl", "panUrl", "createdAt"`).
+		Where(`"isVerified" = ?`, false).
 		Find(&admins)
 
 	adminsWithSignedURLs := []gin.H{}
@@ -352,7 +352,7 @@ func VerifyAdmin(c *gin.Context) {
 
 	// Validate outlets
 	var validOutlets []models.Outlet
-	database.DB.Where("id IN ? AND is_active = ?", req.OutletIDs, true).Find(&validOutlets)
+	database.DB.Where(`id IN ? AND "isActive" = ?`, req.OutletIDs, true).Find(&validOutlets)
 	if len(validOutlets) != len(req.OutletIDs) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "One or more outlets are invalid or inactive"})
 		return
@@ -360,7 +360,7 @@ func VerifyAdmin(c *gin.Context) {
 
 	// Begin verification
 	database.DB.Transaction(func(tx *gorm.DB) error {
-		tx.Model(&admin).Update("is_verified", true)
+		tx.Model(&admin).Update("isVerified", true)
 
 		// Create AdminOutlet relations
 		for _, outletID := range req.OutletIDs {
@@ -400,7 +400,7 @@ func VerifyAdmin(c *gin.Context) {
 // GetVerifiedAdmins returns verified admins
 func GetVerifiedAdmins(c *gin.Context) {
 	var admins []models.Admin
-	database.DB.Where("is_verified = ?", true).
+	database.DB.Where(`"isVerified" = ?`, true).
 		Preload("Outlets").
 		Find(&admins)
 
@@ -518,7 +518,7 @@ func MapOutletsToAdmin(c *gin.Context) {
 
 	// Validate outlets
 	var validOutlets []models.Outlet
-	database.DB.Where("id IN ? AND is_active = ?", req.OutletIDs, true).Find(&validOutlets)
+	database.DB.Where(`id IN ? AND "isActive" = ?`, req.OutletIDs, true).Find(&validOutlets)
 	if len(validOutlets) != len(req.OutletIDs) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "One or more outlets are invalid or inactive"})
 		return
@@ -603,16 +603,16 @@ func AssignAdminPermissions(c *gin.Context) {
 	// Update permissions
 	for outletID, perms := range req.Permissions {
 		var adminOutlet models.AdminOutlet
-		database.DB.Where("admin_id = ? AND outlet_id = ?", req.AdminID, outletID).First(&adminOutlet)
+		database.DB.Where(`"adminId" = ? AND "outletId" = ?`, req.AdminID, outletID).First(&adminOutlet)
 
 		for _, permObj := range perms {
 			permType := models.AdminPermissionType(permObj["type"].(string))
 			isGranted, _ := permObj["isGranted"].(bool)
 
 			var existing models.AdminPermission
-			err := database.DB.Where("admin_outlet_id = ? AND type = ?", adminOutlet.ID, permType).First(&existing).Error
+			err := database.DB.Where(`"adminOutletId" = ? AND type = ?`, adminOutlet.ID, permType).First(&existing).Error
 			if err == nil {
-				database.DB.Model(&existing).Update("is_granted", isGranted)
+				database.DB.Model(&existing).Update("isGranted", isGranted)
 			} else {
 				perm := models.AdminPermission{
 					AdminOutletID: adminOutlet.ID,
@@ -656,8 +656,8 @@ func VerifyStaff(c *gin.Context) {
 	}
 
 	database.DB.Model(&user).Updates(map[string]interface{}{
-		"is_verified": true,
-		"outlet_id":   req.OutletID,
+		"isVerified": true,
+		"outletId":   req.OutletID,
 	})
 
 	// Create or update staff details
@@ -679,7 +679,7 @@ func VerifyStaff(c *gin.Context) {
 			database.DB.Create(&perm)
 		}
 	} else {
-		database.DB.Model(user.StaffInfo).Update("staff_role", req.StaffRole)
+		database.DB.Model(user.StaffInfo).Update("staffRole", req.StaffRole)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -691,8 +691,8 @@ func VerifyStaff(c *gin.Context) {
 // GetUnverifiedStaff returns unverified staff
 func GetUnverifiedStaff(c *gin.Context) {
 	var users []models.User
-	database.DB.Where("role = ? AND is_verified = ?", models.RoleStaff, false).
-		Select("id, name, email, phone, created_at").
+	database.DB.Where(`role = ? AND "isVerified" = ?`, models.RoleStaff, false).
+		Select(`id, name, email, phone, "createdAt"`).
 		Find(&users)
 
 	c.JSON(http.StatusOK, users)
@@ -701,8 +701,8 @@ func GetUnverifiedStaff(c *gin.Context) {
 // GetVerifiedStaff returns verified staff
 func GetVerifiedStaff(c *gin.Context) {
 	var users []models.User
-	database.DB.Where("role = ? AND is_verified = ?", models.RoleStaff, true).
-		Select("id, name, email, phone, outlet_id, created_at").
+	database.DB.Where(`role = ? AND "isVerified" = ?`, models.RoleStaff, true).
+		Select(`id, name, email, phone, "outletId", "createdAt"`).
 		Find(&users)
 
 	c.JSON(http.StatusOK, users)

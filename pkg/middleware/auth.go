@@ -14,6 +14,12 @@ import (
 // AuthenticateToken middleware - mirrors Express.js authenticateToken
 func AuthenticateToken() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Allow OPTIONS requests (preflight)
+		if c.Request.Method == "OPTIONS" {
+			c.Next()
+			return
+		}
+
 		// Get token from cookie or Authorization header
 		token := ""
 		
