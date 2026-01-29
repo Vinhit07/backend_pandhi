@@ -81,9 +81,9 @@ func GetExpenses(c *gin.Context) {
 	twoWeeksAgo := time.Now().AddDate(0, 0, -14)
 
 	var expenses []models.Expense
-	database.DB.Where("outlet_id = ? AND expense_date >= ? AND expense_date <= ?",
+	database.DB.Where(`"outletId" = ? AND "expenseDate" >= ? AND "expenseDate" <= ?`,
 		outletID, twoWeeksAgo, time.Now()).
-		Order("expense_date DESC").
+		Order(`"expenseDate" DESC`).
 		Find(&expenses)
 
 	message := "Expenses retrieved successfully"
@@ -114,9 +114,9 @@ func GetExpenseByDate(c *gin.Context) {
 	to, _ := time.Parse("2006-01-02", req.To)
 
 	var expenses []models.Expense
-	database.DB.Where("outlet_id = ? AND expense_date >= ? AND expense_date <= ?",
+	database.DB.Where(`"outletId" = ? AND "expenseDate" >= ? AND "expenseDate" <= ?`,
 		req.OutletID, from, to).
-		Order("expense_date DESC").
+		Order(`"expenseDate" DESC`).
 		Find(&expenses)
 
 	c.JSON(http.StatusOK, gin.H{

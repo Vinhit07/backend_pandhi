@@ -70,7 +70,7 @@ func GetScheduledNotifications(c *gin.Context) {
 	outletID, _ := strconv.Atoi(outletIDStr)
 
 	var notifications []models.ScheduledNotification
-	database.DB.Where("outlet_id = ?", outletID).Find(&notifications)
+	database.DB.Where(`"outletId" = ?`, outletID).Find(&notifications)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -106,8 +106,7 @@ func SendImmediateNotification(c *gin.Context) {
 
 	// Get device tokens for customers
 	var deviceTokens []models.UserDeviceToken
-	database.DB.Joins("JOIN users ON users.id = user_device_tokens.user_id").
-		Where("users.outlet_id = ? AND users.role = ? AND user_device_tokens.is_active = ?",
+	database.DB.Joins(`JOIN "User" ON "User".id = "UserDeviceToken"."userId"`).Where(`"User"."outletId" = ? AND "User".role = ? AND "UserDeviceToken"."isActive" = ?`,
 			req.OutletID, models.RoleCustomer, true).
 		Find(&deviceTokens)
 
@@ -148,10 +147,10 @@ func GetNotificationStats(c *gin.Context) {
 	outletID, _ := strconv.Atoi(outletIDStr)
 
 	var total int64
-	database.DB.Model(&models.ScheduledNotification{}).Where("outlet_id = ?", outletID).Count(&total)
+	database.DB.Model(&models.ScheduledNotification{}).Where(`"outletId" = ?`, outletID).Count(&total)
 
 	var sent int64
-	database.DB.Model(&models.ScheduledNotification{}).Where("outlet_id = ? AND is_sent = ?", outletID, true).Count(&sent)
+	database.DB.Model(&models.ScheduledNotification{}).Where(`"outletId" = ? AND "isSent" = ?`, outletID, true).Count(&sent)
 
 	pending := total - sent
 

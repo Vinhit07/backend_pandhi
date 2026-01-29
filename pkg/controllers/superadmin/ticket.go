@@ -21,7 +21,7 @@ func GetTickets(c *gin.Context) {
 
 	// Get customers with tickets
 	var users []models.User
-	database.DB.Where("outlet_id = ? AND role = ?", outletID, models.RoleCustomer).
+	database.DB.Where(`"outletId" = ? AND role = ?`, outletID, models.RoleCustomer).
 		Preload("CustomerInfo.Tickets").
 		Find(&users)
 
@@ -65,9 +65,9 @@ func TicketClose(c *gin.Context) {
 
 	// Update ticket
 	if err := database.DB.Model(&models.Ticket{}).Where("id = ?", req.TicketID).Updates(map[string]interface{}{
-		"status":          models.TicketStatusClosed,
-		"resolution_note": req.ResolutionNote,
-		"resolved_at":     resolvedTime,
+		"status":         models.TicketStatusClosed,
+		"resolutionNote": req.ResolutionNote,
+		"resolvedAt":     resolvedTime,
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return

@@ -21,7 +21,7 @@ func GetProducts(c *gin.Context) {
 	var products []models.Product
 	query := database.DB.Preload("Inventory").Order("name ASC")
 	if outletID > 0 {
-		query = query.Where("outlet_id = ?", outletID)
+		query = query.Where(`"outletId" = ?`, outletID)
 	}
 	query.Find(&products)
 
@@ -254,20 +254,20 @@ func UpdateProduct(c *gin.Context) {
 	// Update in transaction
 	database.DB.Transaction(func(tx *gorm.DB) error {
 		tx.Model(&existingProduct).Updates(map[string]interface{}{
-			"name":         crtName,
-			"description":  description,
-			"price":        price,
-			"image_url":    imageURL,
-			"category":     category,
-			"min_value":    minValue,
-			"outlet_id":    outletID,
-			"is_veg":       isVeg,
-			"company_paid": companyPaid,
+			"name":        crtName,
+			"description": description,
+			"price":       price,
+			"imageUrl":    imageURL,
+			"category":    category,
+			"minValue":    minValue,
+			"outletId":    outletID,
+			"isVeg":       isVeg,
+			"companyPaid": companyPaid,
 		})
 
 		tx.Model(&existingProduct.Inventory).Updates(map[string]interface{}{
-			"threshold":  threshold,
-			"outlet_id":  outletID,
+			"threshold": threshold,
+			"outletId":  outletID,
 		})
 
 		tx.Create(&models.StockHistory{

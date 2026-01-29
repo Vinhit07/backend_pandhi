@@ -21,7 +21,7 @@ func GetCustomersWithWallet(c *gin.Context) {
 	}
 
 	var users []models.User
-	database.DB.Where("role = ? AND outlet_id = ?", models.RoleCustomer, outletID).
+	database.DB.Where(`role = ? AND "outletId" = ?`, models.RoleCustomer, outletID).
 		Preload("CustomerInfo.Wallet").
 		Find(&users)
 
@@ -79,9 +79,9 @@ func GetRechargeHistoryByOutlet(c *gin.Context) {
 	}
 
 	var users []models.User
-	database.DB.Where("role = ? AND outlet_id = ?", models.RoleCustomer, outletID).
+	database.DB.Where(`role = ? AND "outletId" = ?`, models.RoleCustomer, outletID).
 		Preload("CustomerInfo.Wallet.Transactions", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at DESC")
+			return db.Order(`"createdAt" DESC`)
 		}).
 		Find(&users)
 
@@ -111,9 +111,9 @@ func GetRechargeHistoryByOutlet(c *gin.Context) {
 // GetOrdersPaidViaWallet returns all wallet-paid orders
 func GetOrdersPaidViaWallet(c *gin.Context) {
 	var orders []models.Order
-	database.DB.Where("payment_method = ?", models.PaymentMethodWallet).
+	database.DB.Where(`"paymentMethod" = ?`, models.PaymentMethodWallet).
 		Preload("Customer.User").
-		Order("created_at DESC").
+		Order(`"createdAt" DESC`).
 		Find(&orders)
 
 	result := make([]gin.H, len(orders))

@@ -154,8 +154,8 @@ func GetOutletStaff(c *gin.Context) {
 	}
 
 	var staffDetails []models.StaffDetails
-	database.DB.Joins("JOIN users ON users.id = staff_details.user_id").
-		Where("users.outlet_id = ? AND users.role = ?", outletID, models.RoleStaff).
+	database.DB.Joins(`JOIN "User" ON "User".id = "StaffDetails"."userId"`).
+		Where(`"User"."outletId" = ? AND "User".role = ?`, outletID, models.RoleStaff).
 		Preload("User").
 		Preload("Permissions").
 		Find(&staffDetails)
@@ -243,7 +243,7 @@ func OutletUpdateStaff(c *gin.Context) {
 		updates["phone"] = phone
 	}
 	if imageURL != nil {
-		updates["image_url"] = *imageURL
+		updates["imageUrl"] = *imageURL
 	}
 
 	database.DB.Model(&staffDetails.User).Updates(updates)

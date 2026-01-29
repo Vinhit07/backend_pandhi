@@ -27,7 +27,7 @@ func GetOutletAppFeatures(c *gin.Context) {
 	}
 
 	var features []models.OutletAppManagement
-	database.DB.Where("outlet_id = ?", outletID).Find(&features)
+	database.DB.Where(`"outletId" = ?`, outletID).Find(&features)
 
 	allFeatures := []string{"APP", "UPI", "LIVE_COUNTER", "COUPONS"}
 	featureStatus := make(map[string]bool)
@@ -106,7 +106,7 @@ func GetOutletNonAvailabilityPreview(c *gin.Context) {
 	}
 
 	var nonAvailable []models.OutletAvailability
-	database.DB.Where("outlet_id = ?", outletID).Find(&nonAvailable)
+	database.DB.Where(`"outletId" = ?`, outletID).Find(&nonAvailable)
 
 	previewData := []gin.H{}
 	for _, entry := range nonAvailable {
@@ -139,7 +139,7 @@ func SetOutletAvailability(c *gin.Context) {
 
 	database.DB.Transaction(func(tx *gorm.DB) error {
 		// Delete existing
-		tx.Where("outlet_id = ?", req.OutletID).Delete(&models.OutletAvailability{})
+		tx.Where(`"outletId" = ?`, req.OutletID).Delete(&models.OutletAvailability{})
 
 		// Create new
 		for _, entry := range req.NonAvailableDates {

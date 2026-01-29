@@ -3,6 +3,7 @@ package superadmin
 import (
 	"backend_pandhi/pkg/database"
 	"backend_pandhi/pkg/models"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -18,15 +19,33 @@ func OutletTotalOrders(c *gin.Context) {
 		return
 	}
 
+	log.Printf("🔍 [OutletTotalOrders] Fetching orders for outlet ID: %d", outletID)
+
 	var orders []models.Order
-	database.DB.Where("outlet_id = ?", outletID).
+	result := database.DB.Where(`"outletId" = ?`, outletID).
 		Preload("Customer.User").
 		Preload("Items.Product").
-		Order("created_at DESC").
+		Order(`"createdAt" DESC`).
 		Find(&orders)
+
+	if result.Error != nil {
+		log.Printf("❌ [OutletTotalOrders] Database error: %v", result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch orders", "error": result.Error.Error()})
+		return
+	}
+
+	log.Printf("📦 [OutletTotalOrders] Found %d orders in database", len(orders))
+	
+	if len(orders) == 0 {
+		log.Printf("⚠️  [OutletTotalOrders] No orders found for outlet ID: %d", outletID)
+		c.JSON(http.StatusOK, []gin.H{})
+		return
+	}
 
 	formatted := make([]gin.H, len(orders))
 	for i, order := range orders {
+		log.Printf("🔄 [OutletTotalOrders] Processing order #%d (ID: %d)", i+1, order.ID)
+		
 		customerName := "WalkIn"
 		var customerPhone *string
 
@@ -37,6 +56,8 @@ func OutletTotalOrders(c *gin.Context) {
 				customerPhone = order.Customer.User.Phone
 			}
 		}
+
+		log.Printf("   Customer: %s, Items count: %d", customerName, len(order.Items))
 
 		items := make([]gin.H, len(order.Items))
 		for j, item := range order.Items {
@@ -62,6 +83,9 @@ func OutletTotalOrders(c *gin.Context) {
 			"items":         items,
 		}
 	}
+
+	log.Printf("✅ [OutletTotalOrders] Returning %d formatted orders", len(formatted))
+	log.Printf("📋 [OutletTotalOrders] Sample response: %+v", formatted[0])
 
 	c.JSON(http.StatusOK, formatted)
 }

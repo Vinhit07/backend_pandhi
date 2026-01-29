@@ -20,7 +20,7 @@ func GetOutletCustomers(c *gin.Context) {
 
 	// Get users with customer info
 	var users []models.User
-	database.DB.Where("outlet_id = ? AND role = ?", outletID, models.RoleCustomer).
+	database.DB.Where(`"outletId" = ? AND role = ?`, outletID, models.RoleCustomer).
 		Preload("CustomerInfo.Wallet").
 		Preload("CustomerInfo.Orders").
 		Find(&users)
