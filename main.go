@@ -32,11 +32,12 @@ func main() {
 	defer database.CloseDatabase()
 
 	// Run migrations (optional - comment out in production if using manual migrations)
-	if config.IsDevelopment() {
-		if err := database.AutoMigrate(); err != nil {
-			log.Printf("⚠️ Failed to run migrations: %v", err)
-		}
-	}
+	// DISABLED: Database schema is managed by Prisma
+	// if config.IsDevelopment() {
+	// 	if err := database.AutoMigrate(); err != nil {
+	// 		log.Printf("⚠️ Failed to run migrations: %v", err)
+	// 	}
+	// }
 
 	// Initialize GCP Storage service
 	if err := services.InitGCPStorage(); err != nil {

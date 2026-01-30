@@ -49,11 +49,15 @@ func GetDashboardOverview(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"totalActiveOutlets":  totalActiveOutlets,
-		"totalRevenue":        totalRevenue,
-		"totalCustomers":      totalCustomers,
-		"totalOrders":         totalOrders,
-		"topPerformingOutlet": topOutletDetails,
+		"success": true,
+		"data": gin.H{
+			"totalActiveOutlets":  totalActiveOutlets,
+			"totalRevenue":        totalRevenue,
+			"totalCustomers":      totalCustomers,
+			"totalOrders":         totalOrders,
+			"topPerformingOutlet": topOutletDetails,
+		},
+		"message": "Dashboard overview fetched successfully",
 	})
 }
 

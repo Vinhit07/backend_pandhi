@@ -9,9 +9,31 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 )
 
 var DB *gorm.DB
+
+// QuotedNamingStrategy wraps the default naming strategy and quotes all identifiers
+// This ensures PostgreSQL uses case-sensitive column names as defined in the schema
+type QuotedNamingStrategy struct {
+	schema.NamingStrategy
+}
+
+// ColumnName quotes column names for PostgreSQL case-sensitivity
+func (q QuotedNamingStrategy) ColumnName(table, column string) string {
+	return fmt.Sprintf("\"%s\"", q.NamingStrategy.ColumnName(table, column))
+}
+
+// TableName quotes table names
+func (q QuotedNamingStrategy) TableName(table string) string {
+	return fmt.Sprintf("\"%s\"", q.NamingStrategy.TableName(table))
+}
+
+// JoinTableName quotes join table names
+func (q QuotedNamingStrategy) JoinTableName(joinTable string) string {
+	return fmt.Sprintf("\"%s\"", q.NamingStrategy.JoinTableName(joinTable))
+}
 
 // InitDatabase initializes the database connection
 func InitDatabase() error {
@@ -21,6 +43,11 @@ func InitDatabase() error {
 	gormConfig := &gorm.Config{
 		Logger:      logger.Default.LogMode(logger.Info),
 		PrepareStmt: false,
+		NamingStrategy: QuotedNamingStrategy{
+			schema.NamingStrategy{
+				SingularTable: false,
+			},
+		},
 	}
 
 	// Development mode - verbose logging

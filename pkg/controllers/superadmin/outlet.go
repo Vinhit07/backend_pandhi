@@ -46,8 +46,9 @@ func AddOutlets(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"data":    outlet,
 		"message": "Outlet created successfully",
-		"outlet":  outlet,
 	})
 }
 
@@ -56,7 +57,11 @@ func GetOutlets(c *gin.Context) {
 	var outlets []models.Outlet
 	database.DB.Find(&outlets)
 
-	c.JSON(http.StatusOK, gin.H{"outlets": outlets})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    outlets,
+		"message": "Outlets fetched successfully",
+	})
 }
 
 // RemoveOutlets deletes an outlet
@@ -73,5 +78,8 @@ func RemoveOutlets(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Deleted Outlet"})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Outlet deleted successfully",
+	})
 }

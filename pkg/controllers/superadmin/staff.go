@@ -186,7 +186,11 @@ func GetOutletStaff(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"staffs": staffsWithSignedURLs})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    staffsWithSignedURLs,
+		"message": "Staff members fetched successfully",
+	})
 }
 
 // OutletUpdateStaff updates staff member details
@@ -312,5 +316,9 @@ func GetStaffById(c *gin.Context) {
 		staff.User.ImageURL = &signedURL
 	}
 
-	c.JSON(http.StatusOK, gin.H{"staff": staff})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    staff,
+		"message": "Staff details fetched successfully",
+	})
 }

@@ -149,13 +149,14 @@ func AddProduct(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusCreated, gin.H{
-		"message": "Product Created",
-		"product": gin.H{
+		"success": true,
+		"data": gin.H{
 			"name":     newProduct.Name,
 			"price":    newProduct.Price,
 			"minValue": newProduct.MinValue,
 			"imageUrl": newProduct.ImageURL,
 		},
+		"message": "Product created successfully",
 	})
 }
 
@@ -174,7 +175,10 @@ func DeleteProduct(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "product(s) deleted successfully"})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Product deleted successfully",
+	})
 }
 
 // UpdateProduct updates product details with image upload
