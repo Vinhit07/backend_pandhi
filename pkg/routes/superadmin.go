@@ -87,7 +87,7 @@ func RegisterSuperAdminRoutes(router *gin.Engine) {
 	superadminGroup.POST("/outlets/customer-per-order/:outletId/", middleware.RestrictToSuperAdminOrAdmin(), superadmin.GetCustomerPerOrder)
 
 	// Dashboard Management (6 analytics endpoints)
-	superadminGroup.GET("/dashboard/overview", middleware.RestrictToSuperAdminOrAdmin(), superadmin.GetDashboardOverview)
+	superadminGroup.POST("/dashboard/overview", middleware.RestrictToSuperAdminOrAdmin(), superadmin.GetDashboardOverview)
 	superadminGroup.POST("/dashboard/revenue-trend", middleware.RestrictToSuperAdminOrAdmin(), superadmin.GetRevenueTrend)
 	superadminGroup.POST("/dashboard/order-status-distribution", middleware.RestrictToSuperAdminOrAdmin(), superadmin.GetOrderStatusDistribution)
 	superadminGroup.POST("/dashboard/order-source-distribution", middleware.RestrictToSuperAdminOrAdmin(), superadmin.GetOrderSourceDistribution)

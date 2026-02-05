@@ -3,6 +3,7 @@ package superadmin
 import (
 	"backend_pandhi/pkg/database"
 	"backend_pandhi/pkg/models"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -77,6 +78,7 @@ func GetExpenses(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
 		return
 	}
+	fmt.Printf("[DEBUG] GetExpenses - OutletID: %d\n", outletID)
 
 	twoWeeksAgo := time.Now().AddDate(0, 0, -14)
 
@@ -85,6 +87,7 @@ func GetExpenses(c *gin.Context) {
 		outletID, twoWeeksAgo, time.Now()).
 		Order(`"expenseDate" DESC`).
 		Find(&expenses)
+	fmt.Printf("[DEBUG] GetExpenses - Found %d expenses\n", len(expenses))
 
 	message := "Expenses retrieved successfully"
 	if len(expenses) == 0 {
@@ -92,8 +95,8 @@ func GetExpenses(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":  message,
-		"expenses": expenses,
+		"message": message,
+		"data":    expenses,
 	})
 }
 
@@ -120,8 +123,8 @@ func GetExpenseByDate(c *gin.Context) {
 		Find(&expenses)
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":  "Expenses fetched successfully",
-		"count":    len(expenses),
-		"expenses": expenses,
+		"message": "Expenses fetched successfully",
+		"count":   len(expenses),
+		"data":    expenses,
 	})
 }

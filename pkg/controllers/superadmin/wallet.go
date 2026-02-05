@@ -3,6 +3,7 @@ package superadmin
 import (
 	"backend_pandhi/pkg/database"
 	"backend_pandhi/pkg/models"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -19,11 +20,13 @@ func GetCustomersWithWallet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "Provide outletId"})
 		return
 	}
+	fmt.Printf("[DEBUG] GetCustomersWithWallet - OutletID: %d\n", outletID)
 
 	var users []models.User
 	database.DB.Where(`role = ? AND "outletId" = ?`, models.RoleCustomer, outletID).
 		Preload("CustomerInfo.Wallet").
 		Find(&users)
+	fmt.Printf("[DEBUG] GetCustomersWithWallet - Found %d users\n", len(users))
 
 	formatted := make([]gin.H, len(users))
 	for i, user := range users {
@@ -77,6 +80,7 @@ func GetRechargeHistoryByOutlet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "Provide outletId"})
 		return
 	}
+	fmt.Printf("[DEBUG] GetRechargeHistoryByOutlet - OutletID: %d\n", outletID)
 
 	var users []models.User
 	database.DB.Where(`role = ? AND "outletId" = ?`, models.RoleCustomer, outletID).
@@ -84,6 +88,7 @@ func GetRechargeHistoryByOutlet(c *gin.Context) {
 			return db.Order(`"createdAt" DESC`)
 		}).
 		Find(&users)
+	fmt.Printf("[DEBUG] GetRechargeHistoryByOutlet - Found %d users\n", len(users))
 
 	history := []gin.H{}
 	for _, user := range users {
@@ -110,11 +115,13 @@ func GetRechargeHistoryByOutlet(c *gin.Context) {
 
 // GetOrdersPaidViaWallet returns all wallet-paid orders
 func GetOrdersPaidViaWallet(c *gin.Context) {
+	fmt.Println("[DEBUG] GetOrdersPaidViaWallet - Start")
 	var orders []models.Order
 	database.DB.Where(`"paymentMethod" = ?`, models.PaymentMethodWallet).
 		Preload("Customer.User").
 		Order(`"createdAt" DESC`).
 		Find(&orders)
+	fmt.Printf("[DEBUG] GetOrdersPaidViaWallet - Found %d orders\n", len(orders))
 
 	result := make([]gin.H, len(orders))
 	for i, order := range orders {

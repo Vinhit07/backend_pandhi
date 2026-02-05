@@ -45,7 +45,7 @@ func GetTickets(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"tickets": allTickets})
+	c.JSON(http.StatusOK, gin.H{"data": allTickets})
 }
 
 // TicketClose closes a ticket with resolution note

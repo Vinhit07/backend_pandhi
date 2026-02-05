@@ -16,11 +16,32 @@ import (
 
 // GetDashboardOverview returns overall statistics
 func GetDashboardOverview(c *gin.Context) {
+	var req struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	// Optional date filtering via POST body
+	c.ShouldBindJSON(&req)
+
+	// Build date filter if provided
+	var dateFilter func(*gorm.DB) *gorm.DB
+	if req.From != "" && req.To != "" {
+		from, _ := time.Parse("2006-01-02", req.From)
+		to, _ := time.Parse("2006-01-02", req.To)
+		to = to.Add(23*time.Hour + 59*time.Minute)
+		dateFilter = func(db *gorm.DB) *gorm.DB {
+			return db.Where(`"createdAt" >= ? AND "createdAt" <= ?`, from, to)
+		}
+	} else {
+		dateFilter = func(db *gorm.DB) *gorm.DB { return db }
+	}
+
 	var totalActiveOutlets int64
 	database.DB.Model(&models.Outlet{}).Where(`"isActive" = ?`, true).Count(&totalActiveOutlets)
 
 	var totalRevenue float64
 	database.DB.Model(&models.Order{}).
+		Scopes(dateFilter).
 		Where("status IN ?", []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}).
 		Select("COALESCE(SUM(\"totalAmount\"), 0)").Scan(&totalRevenue)
 
@@ -28,7 +49,7 @@ func GetDashboardOverview(c *gin.Context) {
 	database.DB.Model(&models.CustomerDetails{}).Count(&totalCustomers)
 
 	var totalOrders int64
-	database.DB.Model(&models.Order{}).Count(&totalOrders)
+	database.DB.Model(&models.Order{}).Scopes(dateFilter).Count(&totalOrders)
 
 	// Top performing outlet
 	type OutletRevenue struct {
@@ -37,9 +58,10 @@ func GetDashboardOverview(c *gin.Context) {
 	}
 	var topOutlet OutletRevenue
 	database.DB.Model(&models.Order{}).
-		Select("\"outletId\", SUM(\"totalAmount\") as \"totalAmount\"").
-		Group("\"outletId\"").
-		Order("\"totalAmount\" DESC").
+		Scopes(dateFilter).
+		Select(`"outletId", SUM("totalAmount") as "totalAmount"`).
+		Group(`"outletId"`).
+		Order(`"totalAmount" DESC`).
 		Limit(1).Scan(&topOutlet)
 
 	var topOutletDetails *models.Outlet
@@ -77,8 +99,8 @@ func GetRevenueTrend(c *gin.Context) {
 	to = to.Add(23*time.Hour + 59*time.Minute)
 
 	var orders []struct {
-		TotalAmount float64
-		CreatedAt   time.Time
+		TotalAmount float64   `gorm:"column:totalAmount"`
+		CreatedAt   time.Time `gorm:"column:createdAt"`
 	}
 	database.DB.Model(&models.Order{}).
 		Select("\"totalAmount\", \"createdAt\"").
@@ -116,32 +138,40 @@ func GetOrderStatusDistribution(c *gin.Context) {
 	to = to.Add(23*time.Hour + 59*time.Minute)
 
 	type StatusCount struct {
-		Status models.OrderStatus
-		Count  int64
+		Status string `gorm:"column:status"`
+		Count  int64  `gorm:"column:count"`
 	}
 	var statusCounts []StatusCount
-	database.DB.Model(&models.Order{}).
+	query := database.DB.Model(&models.Order{}).
 		Select("status, COUNT(*) as count").
-		Where("\"createdAt\" >= ? AND \"createdAt\" <= ?", from, to).
-		Group("status").
-		Scan(&statusCounts)
+		Where(`"createdAt" >= ? AND "createdAt" <= ?`, from, to).
+		Group("status")
+
+	// Enable debug to see raw SQL
+	query = query.Debug()
+	query.Scan(&statusCounts)
+
+	fmt.Printf("[DEBUG] GetOrderStatusDistribution - Found %d status groups\n", len(statusCounts))
+	for _, sc := range statusCounts {
+		fmt.Printf("[DEBUG]   - Status: '%s', Count: %d\n", sc.Status, sc.Count)
+	}
 
 	result := gin.H{
-		"delivered":           int64(0),
-		"pending":             int64(0),
-		"cancelled":           int64(0),
-		"partiallyDelivered":  int64(0),
+		"delivered":          int64(0),
+		"pending":            int64(0),
+		"cancelled":          int64(0),
+		"partiallyDelivered": int64(0),
 	}
 
 	for _, sc := range statusCounts {
 		switch sc.Status {
-		case models.OrderStatusDelivered:
+		case "DELIVERED":
 			result["delivered"] = sc.Count
-		case models.OrderStatusPending:
+		case "PENDING":
 			result["pending"] = sc.Count
-		case models.OrderStatusCancelled:
+		case "CANCELLED":
 			result["cancelled"] = sc.Count
-		case models.OrderStatusPartiallyDelivered:
+		case "PARTIALLY_DELIVERED":
 			result["partiallyDelivered"] = sc.Count
 		}
 	}
@@ -165,8 +195,8 @@ func GetOrderSourceDistribution(c *gin.Context) {
 	to = to.Add(23*time.Hour + 59*time.Minute)
 
 	type TypeCount struct {
-		Type  models.OrderType
-		Count int64
+		Type  string `gorm:"column:type"`
+		Count int64  `gorm:"column:count"`
 	}
 	var typeCounts []TypeCount
 	database.DB.Model(&models.Order{}).
@@ -181,9 +211,9 @@ func GetOrderSourceDistribution(c *gin.Context) {
 	}
 
 	for _, tc := range typeCounts {
-		if tc.Type == models.OrderTypeApp {
+		if tc.Type == "APP" {
 			result["appOrders"] = tc.Count
-		} else if tc.Type == models.OrderTypeManual {
+		} else if tc.Type == "MANUAL" {
 			result["manualOrders"] = tc.Count
 		}
 	}
@@ -207,10 +237,10 @@ func GetTopSellingItems(c *gin.Context) {
 	to = to.Add(23*time.Hour + 59*time.Minute)
 
 	type ProductStats struct {
-		ProductID    int     `json:"productId"`
-		ProductName  string  `json:"productName"`
-		TotalOrders  int     `json:"totalOrders"`
-		TotalRevenue float64 `json:"totalRevenue"`
+		ProductID    int     `gorm:"column:productId" json:"productId"`
+		ProductName  string  `gorm:"column:product_name" json:"productName"`
+		TotalOrders  float64 `gorm:"column:total_orders" json:"totalOrders"`
+		TotalRevenue float64 `gorm:"column:total_revenue" json:"totalRevenue"`
 	}
 	var stats []ProductStats
 	database.DB.Table("\"OrderItem\"").
@@ -243,8 +273,8 @@ func GetPeakTimeSlots(c *gin.Context) {
 	to = to.Add(23*time.Hour + 59*time.Minute)
 
 	type SlotCount struct {
-		DeliverySlot string
-		Count        int64
+		DeliverySlot string `gorm:"column:deliverySlot" json:"deliverySlot"`
+		Count        int64  `gorm:"column:count" json:"count"`
 	}
 	var slots []SlotCount
 	database.DB.Model(&models.Order{}).
@@ -577,7 +607,7 @@ func MapOutletsToAdmin(c *gin.Context) {
 // AssignAdminPermissions assigns permissions to admin for specific outlets
 func AssignAdminPermissions(c *gin.Context) {
 	var req struct {
-		AdminID     int                    `json:"adminId" binding:"required"`
+		AdminID     int             `json:"adminId" binding:"required"`
 		Permissions map[int][]gin.H `json:"permissions" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {

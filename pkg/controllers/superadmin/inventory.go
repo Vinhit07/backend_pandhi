@@ -3,6 +3,7 @@ package superadmin
 import (
 	"backend_pandhi/pkg/database"
 	"backend_pandhi/pkg/models"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -16,11 +17,13 @@ func GetStocks(c *gin.Context) {
 	outletID, err := strconv.Atoi(outletIDStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "Provide outletId"})
-		return
 	}
+	fmt.Printf("[DEBUG] GetStocks - OutletID: %d\n", outletID)
 
 	var products []models.Product
 	database.DB.Where(`"outletId" = ?`, outletID).Preload("Inventory").Find(&products)
+	fmt.Printf("[DEBUG] GetStocks - Found %d products\n", len(products))
+	fmt.Printf("[DEBUG] GetStocks - Found %d products\n", len(products))
 
 	if len(products) == 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "No products found for this outlet."})
@@ -46,7 +49,7 @@ func GetStocks(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"stocks": stockInfo})
+	c.JSON(http.StatusOK, gin.H{"data": stockInfo})
 }
 
 // AddStock adds inventory quantity
@@ -82,6 +85,7 @@ func AddStock(c *gin.Context) {
 
 	// Reload
 	database.DB.First(&inventory, inventory.ID)
+	fmt.Printf("[DEBUG] AddStock - Updated inventory, new quantity: %d\n", inventory.Quantity)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":          "Stock updated successfully",
@@ -154,9 +158,10 @@ func StockHistory(c *gin.Context) {
 		Preload("Product").
 		Order("timestamp DESC").
 		Find(&history)
+	fmt.Printf("[DEBUG] StockHistory - Found %d history records\n", len(history))
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Stock history fetched",
-		"history": history,
+		"data":    history,
 	})
 }
