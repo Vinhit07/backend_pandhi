@@ -28,20 +28,44 @@ func GetOutletSalesReport(c *gin.Context) {
 	to, _ := time.Parse("2006-01-02", req.To)
 
 	type SalesData struct {
-		ProductID   int     `json:"productId"`
-		ProductName string  `json:"productName"`
-		TotalOrders int     `json:"totalOrders"`
-		Quantity    int     `json:"quantity"`
-		Revenue     float64 `json:"revenue"`
+		ProductID   int     `gorm:"column:productId" json:"productId"`
+		ProductName string  `gorm:"column:productName" json:"productName"`
+		TotalOrders int     `gorm:"column:totalOrders" json:"totalOrders"`
+		Quantity    int     `gorm:"column:quantity" json:"quantity"`
+		Revenue     float64 `gorm:"column:revenue" json:"revenue"`
 	}
 	var sales []SalesData
-	database.DB.Table(`"OrderItem"`).Select(`"OrderItem"."productId", "Product".name as product_name, COUNT(DISTINCT "OrderItem"."orderId") as total_orders, SUM("OrderItem".quantity) as quantity, SUM("OrderItem".quantity * "OrderItem"."unitPrice") as revenue`).
-		Joins(`JOIN "Order" ON "Order".id = "OrderItem"."orderId"`).
-		Joins(`JOIN "Product" ON "Product".id = "OrderItem"."productId"`).
-		Where(`"Order"."outletId" = ? AND "Order"."createdAt" >= ? AND "Order"."createdAt" <= ? AND "Order".status IN ?`,
-			outletID, from, to, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}).
-		Group(`"OrderItem"."productId", "Product".name`).
-		Scan(&sales)
+
+	// Debug: Print query parameters
+	println("🔍 Query Params - OutletID:", outletID, "From:", from.String(), "To:", to.String())
+
+	err := database.DB.Raw(`
+		SELECT 
+			"OrderItem"."productId" as "productId",
+			"Product".name as "productName",
+			COUNT(DISTINCT "OrderItem"."orderId") as "totalOrders",
+			SUM("OrderItem".quantity) as "quantity",
+			SUM("OrderItem".quantity * "OrderItem"."unitPrice") as "revenue"
+		FROM "OrderItem"
+		JOIN "Order" ON "Order".id = "OrderItem"."orderId"
+		JOIN "Product" ON "Product".id = "OrderItem"."productId"
+		WHERE "Order"."outletId" = ?
+			AND "Order"."createdAt" >= ?
+			AND "Order"."createdAt" <= ?
+			AND "Order".status IN (?, ?)
+		GROUP BY "OrderItem"."productId", "Product".name
+	`, outletID, from, to, models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered).Scan(&sales).Error
+
+	if err != nil {
+		println("❌ SQL Error:", err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	println("📊 Sales Results Count:", len(sales))
+	for i, s := range sales {
+		println("📦 Item", i, "- ID:", s.ProductID, "Name:", s.ProductName, "Orders:", s.TotalOrders, "Quantity:", s.Quantity, "Revenue:", s.Revenue)
+	}
 
 	c.JSON(http.StatusOK, sales)
 }
@@ -69,7 +93,7 @@ func GetOutletRevenueByItems(c *gin.Context) {
 		Revenue     float64 `json:"revenue"`
 	}
 	var revenue []RevenueData
-	database.DB.Table(`"OrderItem"`).Select(`"OrderItem"."productId", "Product".name as product_name, SUM("OrderItem".quantity * "OrderItem"."unitPrice") as revenue`).
+	database.DB.Table(`"OrderItem"`).Select(`"OrderItem"."productId", "Product".name as productName, SUM("OrderItem".quantity * "OrderItem"."unitPrice") as revenue`).
 		Joins(`JOIN "Order" ON "Order".id = "OrderItem"."orderId"`).
 		Joins(`JOIN "Product" ON "Product".id = "OrderItem"."productId"`).
 		Where(`"Order"."outletId" = ? AND "Order"."createdAt" >= ? AND "Order"."createdAt" <= ? AND "Order".status IN ?`,

@@ -4,17 +4,17 @@ import (
 	"time"
 )
 
-// Outlet model - mirrors Prisma Outlet model
+// Outlet model - mirrors Prisma Out let model
 type Outlet struct {
-	ID         int       `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name       string    `gorm:"unique;not null" json:"name"`
-	Address    *string   `json:"address"`
-	Email      *string   `gorm:"unique" json:"email"`
-	IsActive   bool      `gorm:"default:true" json:"isActive"`
-	CreatedAt  time.Time `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt  time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
-	StaffCount int       `gorm:"default:0" json:"staffCount"`
-	Phone      *string   `json:"phone"`
+	ID         int       `gorm:"primaryKey;autoIncrement;column:id" json:"id"`
+	Name       string    `gorm:"unique;not null;column:name" json:"name"`
+	Address    *string   `gorm:"column:address" json:"address"`
+	Email      *string   `gorm:"unique;column:email" json:"email"`
+	IsActive   bool      `gorm:"default:true;column:isActive" json:"isActive"`
+	CreatedAt  time.Time `gorm:"autoCreateTime;column:createdAt" json:"createdAt"`
+	UpdatedAt  time.Time `gorm:"autoUpdateTime;column:updatedAt" json:"updatedAt"`
+	StaffCount int       `gorm:"default:0;column:staffCount" json:"staffCount"`
+	Phone      *string   `gorm:"column:phone" json:"phone"`
 
 	// Relationships
 	Admins                 []AdminOutlet           `gorm:"foreignKey:OutletID" json:"admins,omitempty"`
@@ -75,11 +75,11 @@ type CustomerDetails struct {
 	OrderCount  int           `gorm:"default:0;column:orderCount" json:"orderCount"`
 
 	// Relationships
-	User    User      `gorm:"foreignKey:UserID;references:ID" json:"user,omitempty"`
-	Cart    *Cart     `gorm:"foreignKey:CustomerID" json:"cart,omitempty"`
-	Orders  []Order   `gorm:"foreignKey:CustomerID" json:"orders,omitempty"`
-	Tickets []Ticket  `gorm:"foreignKey:CustomerID" json:"tickets,omitempty"`
-	Wallet  *Wallet   `gorm:"foreignKey:CustomerID" json:"wallet,omitempty"`
+	User    User     `gorm:"foreignKey:UserID;references:ID" json:"user,omitempty"`
+	Cart    *Cart    `gorm:"foreignKey:CustomerID" json:"cart,omitempty"`
+	Orders  []Order  `gorm:"foreignKey:CustomerID" json:"orders,omitempty"`
+	Tickets []Ticket `gorm:"foreignKey:CustomerID" json:"tickets,omitempty"`
+	Wallet  *Wallet  `gorm:"foreignKey:CustomerID" json:"wallet,omitempty"`
 }
 
 // TableName specifies the table name for CustomerDetails model

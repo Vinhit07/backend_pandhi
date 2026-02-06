@@ -3,6 +3,7 @@ package superadmin
 import (
 	"backend_pandhi/pkg/database"
 	"backend_pandhi/pkg/models"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -56,6 +57,12 @@ func AddOutlets(c *gin.Context) {
 func GetOutlets(c *gin.Context) {
 	var outlets []models.Outlet
 	database.DB.Find(&outlets)
+
+	// DEBUG: Log what we fetched
+	fmt.Printf("[DEBUG] GetOutlets: Found %d outlets\n", len(outlets))
+	for i, o := range outlets {
+		fmt.Printf("[DEBUG]   Outlet[%d]: ID=%d, Name='%s', Address=%v, Email=%v\n", i, o.ID, o.Name, o.Address, o.Email)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
