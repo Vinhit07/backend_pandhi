@@ -67,10 +67,16 @@ func CreateScheduledNotification(c *gin.Context) {
 // GetScheduledNotifications returns scheduled notifications for an outlet
 func GetScheduledNotifications(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, _ := strconv.Atoi(outletIDStr)
+	var outletID int
 
 	var notifications []models.ScheduledNotification
-	database.DB.Where(`"outletId" = ?`, outletID).Find(&notifications)
+	query := database.DB.Model(&models.ScheduledNotification{})
+
+	if outletIDStr != "ALL" {
+		outletID, _ = strconv.Atoi(outletIDStr)
+		query = query.Where(`"outletId" = ?`, outletID)
+	}
+	query.Find(&notifications)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -107,7 +113,7 @@ func SendImmediateNotification(c *gin.Context) {
 	// Get device tokens for customers
 	var deviceTokens []models.UserDeviceToken
 	database.DB.Joins(`JOIN "User" ON "User".id = "UserDeviceToken"."userId"`).Where(`"User"."outletId" = ? AND "User".role = ? AND "UserDeviceToken"."isActive" = ?`,
-			req.OutletID, models.RoleCustomer, true).
+		req.OutletID, models.RoleCustomer, true).
 		Find(&deviceTokens)
 
 	if len(deviceTokens) == 0 {
@@ -144,13 +150,21 @@ func SendImmediateNotification(c *gin.Context) {
 // GetNotificationStats returns notification statistics
 func GetNotificationStats(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, _ := strconv.Atoi(outletIDStr)
+	var outletID int
 
 	var total int64
-	database.DB.Model(&models.ScheduledNotification{}).Where(`"outletId" = ?`, outletID).Count(&total)
-
 	var sent int64
-	database.DB.Model(&models.ScheduledNotification{}).Where(`"outletId" = ? AND "isSent" = ?`, outletID, true).Count(&sent)
+	queryTotal := database.DB.Model(&models.ScheduledNotification{})
+	querySent := database.DB.Model(&models.ScheduledNotification{}).Where(`"isSent" = ?`, true)
+
+	if outletIDStr != "ALL" {
+		outletID, _ = strconv.Atoi(outletIDStr)
+		queryTotal = queryTotal.Where(`"outletId" = ?`, outletID)
+		querySent = querySent.Where(`"outletId" = ?`, outletID)
+	}
+
+	queryTotal.Count(&total)
+	querySent.Count(&sent)
 
 	pending := total - sent
 

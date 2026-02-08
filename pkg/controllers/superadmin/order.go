@@ -13,20 +13,27 @@ import (
 // OutletTotalOrders returns all orders for an outlet with customer and item details
 func OutletTotalOrders(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, err := strconv.Atoi(outletIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
-		return
+	var outletID int
+	var err error
+
+	query := database.DB.Preload("Customer.User").
+		Preload("Items.Product").
+		Order(`"createdAt" DESC`)
+
+	if outletIDStr != "ALL" {
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+		query = query.Where(`"outletId" = ?`, outletID)
+		log.Printf("🔍 [OutletTotalOrders] Fetching orders for outlet ID: %d", outletID)
+	} else {
+		log.Printf("🔍 [OutletTotalOrders] Fetching orders for ALL outlets")
 	}
 
-	log.Printf("🔍 [OutletTotalOrders] Fetching orders for outlet ID: %d", outletID)
-
 	var orders []models.Order
-	result := database.DB.Where(`"outletId" = ?`, outletID).
-		Preload("Customer.User").
-		Preload("Items.Product").
-		Order(`"createdAt" DESC`).
-		Find(&orders)
+	result := query.Find(&orders)
 
 	if result.Error != nil {
 		log.Printf("❌ [OutletTotalOrders] Database error: %v", result.Error)

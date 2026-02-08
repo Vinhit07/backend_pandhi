@@ -16,12 +16,16 @@ import (
 // GetProducts returns all products for an outlet
 func GetProducts(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, _ := strconv.Atoi(outletIDStr)
+	var outletID int
 
 	var products []models.Product
 	query := database.DB.Preload("Inventory").Order("name ASC")
-	if outletID > 0 {
-		query = query.Where(`"outletId" = ?`, outletID)
+
+	if outletIDStr != "ALL" {
+		outletID, _ = strconv.Atoi(outletIDStr)
+		if outletID > 0 {
+			query = query.Where(`"outletId" = ?`, outletID)
+		}
 	}
 	query.Find(&products)
 

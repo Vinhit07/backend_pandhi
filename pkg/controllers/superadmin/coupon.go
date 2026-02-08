@@ -89,14 +89,22 @@ func CreateCoupon(c *gin.Context) {
 // GetCoupons returns all coupons for an outlet
 func GetCoupons(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, err := strconv.Atoi(outletIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
-		return
-	}
+	var outletID int
+	var err error
 
 	var coupons []models.Coupon
-	database.DB.Where(`"outletId" = ?`, outletID).Find(&coupons)
+	query := database.DB.Model(&models.Coupon{})
+
+	if outletIDStr != "ALL" {
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+		query = query.Where(`"outletId" = ?`, outletID)
+	}
+
+	query.Find(&coupons)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Coupons fetched successfully",

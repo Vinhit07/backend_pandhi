@@ -13,7 +13,7 @@ func RegisterSuperAdminRoutes(router *gin.Engine) {
 	// Outlet Management (3 endpoints)
 	superadminGroup.POST("/add-outlet/", middleware.RestrictToSuperAdmin(), superadmin.AddOutlets)
 	superadminGroup.GET("/get-outlets/", middleware.RestrictToSuperAdminOrAdminOrCustomer(), superadmin.GetOutlets)
-	superadminGroup.DELETE("/remove-outlet/:outletId/", middleware.RestrictToSuperAdmin(), superadmin.RemoveOutlets)
+	superadminGroup.DELETE("/remove-outlet/:outletId", middleware.RestrictToSuperAdmin(), superadmin.RemoveOutlets)
 
 	// Staff Management (6 endpoints)
 	superadminGroup.POST("/outlets/add-staff/", middleware.RestrictToSuperAdminOrAdmin(), superadmin.OutletAddStaff)
@@ -46,7 +46,7 @@ func RegisterSuperAdminRoutes(router *gin.Engine) {
 	// Wallet Management (3 endpoints)
 	superadminGroup.GET("/outlets/wallet-history/:outletId/", middleware.RestrictToSuperAdminOrAdmin(), superadmin.GetCustomersWithWallet)
 	superadminGroup.GET("/outlets/recharge-history/:outletId/", middleware.RestrictToSuperAdminOrAdmin(), superadmin.GetRechargeHistoryByOutlet)
-	superadminGroup.GET("/outlets/paid-wallet/", middleware.RestrictToSuperAdminOrAdmin(), superadmin.GetOrdersPaidViaWallet)
+	superadminGroup.GET("/outlets/paid-wallet/:outletId", middleware.RestrictToSuperAdminOrAdmin(), superadmin.GetOrdersPaidViaWallet)
 
 	// Customer Management (1 endpoint)
 	superadminGroup.GET("/outlets/customers/:outletId/", middleware.RestrictToSuperAdminOrAdmin(), superadmin.GetOutletCustomers)
@@ -58,7 +58,7 @@ func RegisterSuperAdminRoutes(router *gin.Engine) {
 	// Coupon Management (3 endpoints)
 	superadminGroup.POST("/create-coupon/", middleware.RestrictToSuperAdminOrAdmin(), superadmin.CreateCoupon)
 	superadminGroup.GET("/get-coupons/:outletId", middleware.RestrictToSuperAdminOrAdmin(), superadmin.GetCoupons)
-	superadminGroup.DELETE("/delete-coupon/:couponId/", middleware.RestrictToSuperAdminOrAdmin(), superadmin.DeleteCoupon)
+	superadminGroup.DELETE("/delete-coupon/:couponId", middleware.RestrictToSuperAdminOrAdmin(), superadmin.DeleteCoupon)
 
 	// Notification Management (8 endpoints)
 	superadminGroup.GET("/dashboard/low-stock-notifications", middleware.RestrictToSuperAdminOrAdmin(), superadmin.GetLowStockNotifications)
