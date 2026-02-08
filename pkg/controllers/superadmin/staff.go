@@ -100,9 +100,11 @@ func OutletAddStaff(c *gin.Context) {
 // OutletStaffPermission updates staff permissions
 func OutletStaffPermission(c *gin.Context) {
 	var req struct {
-		Permission string `json:"permission" binding:"required"`
-		Grant      bool   `json:"grant"`
-		StaffID    int    `json:"staffId" binding:"required"`
+		StaffID     int `json:"staffId" binding:"required"`
+		Permissions []struct {
+			Type      string `json:"type" binding:"required"`
+			IsGranted bool   `json:"isGranted"`
+		} `json:"permissions" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -110,55 +112,62 @@ func OutletStaffPermission(c *gin.Context) {
 		return
 	}
 
-	// Find existing permission
-	var existing models.StaffPermission
-	err := database.DB.Where("staff_id = ? AND type = ?", req.StaffID, req.Permission).First(&existing).Error
-
-	if err == nil {
-		// Update existing
-		database.DB.Model(&existing).Update("is_granted", req.Grant)
-		message := "granted"
-		if !req.Grant {
-			message = "revoked"
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"message":    fmt.Sprintf("Permission %s", message),
-			"permission": existing,
-		})
-	} else {
-		// Create new
-		perm := models.StaffPermission{
-			StaffID:   req.StaffID,
-			Type:      models.PermissionType(req.Permission),
-			IsGranted: req.Grant,
-		}
-		database.DB.Create(&perm)
-		message := "granted"
-		if !req.Grant {
-			message = "revoked"
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"message":    fmt.Sprintf("Permission %s", message),
-			"permission": perm,
-		})
+	// Verify staff exists
+	var staff models.StaffDetails
+	if err := database.DB.First(&staff, req.StaffID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"message": "Staff member not found"})
+		return
 	}
+
+	// Update permissions
+	for _, perm := range req.Permissions {
+		// Find existing permission
+		var existing models.StaffPermission
+		err := database.DB.Where("staff_id = ? AND type = ?", req.StaffID, perm.Type).First(&existing).Error
+
+		if err == nil {
+			// Update existing
+			database.DB.Model(&existing).Update("is_granted", perm.IsGranted)
+		} else {
+			// Create new
+			newPerm := models.StaffPermission{
+				StaffID:   req.StaffID,
+				Type:      models.PermissionType(perm.Type),
+				IsGranted: perm.IsGranted,
+			}
+			database.DB.Create(&newPerm)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Permissions updated successfully",
+	})
 }
 
 // GetOutletStaff returns all staff for an outlet
 func GetOutletStaff(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, err := strconv.Atoi(outletIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
-		return
+	var outletID int
+	var err error
+
+	query := database.DB.Joins(`JOIN "User" ON "User".id = "StaffDetails"."userId"`).
+		Preload("User").
+		Preload("Permissions")
+
+	if outletIDStr != "ALL" {
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+		query = query.Where(`"User"."outletId" = ? AND "User".role = ?`, outletID, models.RoleStaff)
+	} else {
+		query = query.Where(`"User".role = ?`, models.RoleStaff)
 	}
 
 	var staffDetails []models.StaffDetails
-	database.DB.Joins(`JOIN "User" ON "User".id = "StaffDetails"."userId"`).
-		Where(`"User"."outletId" = ? AND "User".role = ?`, outletID, models.RoleStaff).
-		Preload("User").
-		Preload("Permissions").
-		Find(&staffDetails)
+	query.Find(&staffDetails)
 
 	// Get signed URLs for images
 	staffsWithSignedURLs := make([]gin.H, len(staffDetails))
@@ -281,18 +290,37 @@ func OutletDeleteStaff(c *gin.Context) {
 		return
 	}
 
-	// Delete in transaction
-	database.DB.Transaction(func(tx *gorm.DB) error {
-		// Delete permissions
-		tx.Where("staff_id = ?", staffID).Delete(&models.StaffPermission{})
+	userID := staffDetails.UserID
+
+	// Delete in transaction with error handling
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		// Delete permissions first
+		if err := tx.Where("\"staffId\" = ?", staffID).Unscoped().Delete(&models.StaffPermission{}).Error; err != nil {
+			return fmt.Errorf("failed to delete permissions: %w", err)
+		}
+
 		// Delete staff details
-		tx.Delete(&staffDetails)
+		if err := tx.Unscoped().Delete(&staffDetails).Error; err != nil {
+			return fmt.Errorf("failed to delete staff details: %w", err)
+		}
+
 		// Delete user
-		tx.Delete(&staffDetails.User)
+		if err := tx.Where("id = ?", userID).Unscoped().Delete(&models.User{}).Error; err != nil {
+			return fmt.Errorf("failed to delete user: %w", err)
+		}
+
 		return nil
 	})
 
-	c.JSON(http.StatusOK, gin.H{"message": "Staff member deleted successfully"})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to delete staff member", "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Staff member deleted successfully",
+	})
 }
 
 // GetStaffById returns single staff details

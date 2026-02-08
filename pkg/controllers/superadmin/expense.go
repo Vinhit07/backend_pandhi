@@ -73,25 +73,33 @@ func AddExpense(c *gin.Context) {
 // GetExpenses returns expenses for last 2 weeks
 func GetExpenses(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, err := strconv.Atoi(outletIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
-		return
-	}
-	fmt.Printf("[DEBUG] GetExpenses - OutletID: %d\n", outletID)
+	var outletID int
+	var err error
 
-	twoWeeksAgo := time.Now().AddDate(0, 0, -14)
+	query := database.DB.Order(`"expenseDate" DESC`)
+
+	if outletIDStr != "ALL" {
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+		query = query.Where(`"outletId" = ?`, outletID)
+		fmt.Printf("[DEBUG] GetExpenses - OutletID: %d\n", outletID)
+	} else {
+		fmt.Printf("[DEBUG] GetExpenses - All Outlets\n")
+	}
 
 	var expenses []models.Expense
-	database.DB.Where(`"outletId" = ? AND "expenseDate" >= ? AND "expenseDate" <= ?`,
-		outletID, twoWeeksAgo, time.Now()).
-		Order(`"expenseDate" DESC`).
-		Find(&expenses)
+	if err := query.Find(&expenses).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch expenses", "error": err.Error()})
+		return
+	}
 	fmt.Printf("[DEBUG] GetExpenses - Found %d expenses\n", len(expenses))
 
 	message := "Expenses retrieved successfully"
 	if len(expenses) == 0 {
-		message = "No expenses found for the last 2 weeks"
+		message = "No expenses found"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -117,10 +125,14 @@ func GetExpenseByDate(c *gin.Context) {
 	to, _ := time.Parse("2006-01-02", req.To)
 
 	var expenses []models.Expense
-	database.DB.Where(`"outletId" = ? AND "expenseDate" >= ? AND "expenseDate" <= ?`,
-		req.OutletID, from, to).
-		Order(`"expenseDate" DESC`).
-		Find(&expenses)
+	query := database.DB.Where(`"expenseDate" >= ? AND "expenseDate" <= ?`, from, to).
+		Order(`"expenseDate" DESC`)
+
+	if req.OutletID > 0 {
+		query = query.Where(`"outletId" = ?`, req.OutletID)
+	}
+
+	query.Find(&expenses)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Expenses fetched successfully",

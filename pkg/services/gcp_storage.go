@@ -105,7 +105,13 @@ func GetSignedURL(fileURL string) (string, error) {
 	}
 
 	// If public URL, return as-is (no signing needed)
-	return fileURL, nil
+	if strings.HasPrefix(fileURL, "http") {
+		return fileURL, nil
+	}
+
+	// If it's just a filename or relative path, prepend the bucket URL
+	publicURL := fmt.Sprintf("https://storage.googleapis.com/%s/%s", bucketName, fileURL)
+	return publicURL, nil
 }
 
 // UploadImageFromReader uploads an image from an io.Reader (for multipart uploads)
