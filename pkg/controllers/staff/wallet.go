@@ -23,12 +23,12 @@ func GetRechargeHistory(c *gin.Context) {
 	// Fetch wallet transactions for customers in this outlet
 	var transactions []models.WalletTransaction
 	database.DB.
-		Joins("JOIN wallets ON wallets.id = wallet_transactions.wallet_id").
-		Joins("JOIN customer_details ON customer_details.id = wallets.customer_id").
-		Joins("JOIN users ON users.id = customer_details.user_id").
-		Where("users.outlet_id = ? AND wallet_transactions.status = ?", outletID, models.WalletTransTypeRecharge).
+		Joins("JOIN \"Wallet\" ON \"Wallet\".id = \"WalletTransaction\".\"walletId\"").
+		Joins("JOIN \"CustomerDetails\" ON \"CustomerDetails\".id = \"Wallet\".\"customerId\"").
+		Joins("JOIN \"User\" ON \"User\".id = \"CustomerDetails\".\"userId\"").
+		Where("\"User\".\"outletId\" = ? AND \"WalletTransaction\".status = ?", outletID, models.WalletTransTypeRecharge).
 		Preload("Wallet.Customer.User").
-		Order("wallet_transactions.created_at DESC").
+		Order("\"WalletTransaction\".\"createdAt\" DESC").
 		Find(&transactions)
 
 	formattedTransactions := make([]gin.H, len(transactions))
@@ -71,7 +71,7 @@ func AddRecharge(c *gin.Context) {
 	// Find or create wallet
 	var wallet models.Wallet
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
-		result := tx.Where("customer_id = ?", req.CustomerID).First(&wallet)
+		result := tx.Where(map[string]interface{}{"customerId": req.CustomerID}).First(&wallet)
 		if result.Error == gorm.ErrRecordNotFound {
 			// Create wallet if doesn't exist
 			wallet = models.Wallet{
@@ -87,9 +87,9 @@ func AddRecharge(c *gin.Context) {
 			// Update existing wallet
 			now := time.Now()
 			tx.Model(&wallet).Updates(map[string]interface{}{
-				"balance":         wallet.Balance + req.Amount,
-				"total_recharged": wallet.TotalRecharged + req.Amount,
-				"last_recharged":  &now,
+				"balance":        wallet.Balance + req.Amount,
+				"totalRecharged": wallet.TotalRecharged + req.Amount,
+				"lastRecharged":  &now,
 			})
 			wallet.Balance += req.Amount
 			wallet.TotalRecharged += req.Amount

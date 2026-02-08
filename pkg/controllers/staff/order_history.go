@@ -38,7 +38,7 @@ func GetOrderHistory(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
 
-	query := database.DB.Where("outlet_id = ?", outletID)
+	query := database.DB.Where("\"outletId\" = ?", outletID)
 
 	// Apply filters
 	if status != "" {
@@ -48,17 +48,17 @@ func GetOrderHistory(c *gin.Context) {
 		query = query.Where("type = ?", orderType)
 	}
 	if startDate != "" {
-		query = query.Where("created_at >= ?", startDate)
+		query = query.Where("\"createdAt\" >= ?", startDate)
 	}
 	if endDate != "" {
-		query = query.Where("created_at <= ?", endDate)
+		query = query.Where("\"createdAt\" <= ?", endDate)
 	}
 
 	var orders []models.Order
 	query.Preload("Customer.User").
 		Preload("Items.Product").
 		Preload("Outlet").
-		Order("created_at DESC").
+		Order("\"createdAt\" DESC").
 		Find(&orders)
 
 	formattedOrders := make([]gin.H, len(orders))
@@ -125,7 +125,7 @@ func GetAvailableDatesAndSlotsForStaff(c *gin.Context) {
 	next30Days := today.AddDate(0, 0, 30)
 
 	var nonAvailable []models.OutletAvailability
-	database.DB.Where("outlet_id = ? AND date >= ? AND date <= ?",
+	database.DB.Where("\"outletId\" = ? AND date >= ? AND date <= ?",
 		outletID, today, next30Days).Find(&nonAvailable)
 
 	allSlots := []string{"SLOT_11_12", "SLOT_12_13", "SLOT_13_14", "SLOT_14_15", "SLOT_15_16", "SLOT_16_17"}

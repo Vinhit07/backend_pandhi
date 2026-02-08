@@ -21,7 +21,7 @@ func GetStocks(c *gin.Context) {
 
 	var products []models.Product
 	if err := database.DB.
-		Where("outlet_id = ?", outletID).
+		Where(map[string]interface{}{"outletId": outletID}).
 		Preload("Inventory").
 		Find(&products).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
@@ -75,7 +75,7 @@ func AddStock(c *gin.Context) {
 
 	// Find inventory
 	var inventory models.Inventory
-	if err := database.DB.Where("product_id = ?", req.ProductID).First(&inventory).Error; err != nil {
+	if err := database.DB.Where(map[string]interface{}{"productId": req.ProductID}).First(&inventory).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Product inventory not found"})
 		return
 	}
@@ -124,7 +124,7 @@ func DeductStock(c *gin.Context) {
 	// Find inventory
 	var inventory models.Inventory
 	if err := database.DB.
-		Where("product_id = ? AND outlet_id = ?", req.ProductID, req.OutletID).
+		Where(map[string]interface{}{"productId": req.ProductID, "outletId": req.OutletID}).
 		First(&inventory).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Inventory record not found."})
 		return
@@ -186,7 +186,7 @@ func StockHistory(c *gin.Context) {
 	// Fetch history
 	var history []models.StockHistory
 	database.DB.
-		Where("outlet_id = ? AND action IN ? AND timestamp >= ? AND timestamp <= ?",
+		Where("\"outletId\" = ? AND action IN ? AND timestamp >= ? AND timestamp <= ?",
 			req.OutletID,
 			[]models.StockAction{models.StockActionAdd, models.StockActionRemove},
 			from,

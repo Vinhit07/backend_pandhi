@@ -45,12 +45,12 @@ func GetHomeDetails(c *gin.Context) {
 
 	var orderStats []OrderStat
 	database.DB.Model(&models.Order{}).
-		Select("type, delivery_slot, COUNT(*) as count, COALESCE(SUM(total_amount), 0) as total_amount").
-		Where("outlet_id = ? AND status IN ?", outletID, []models.OrderStatus{
+		Select("type, \"deliverySlot\", COUNT(*) as count, COALESCE(SUM(\"totalAmount\"), 0) as total_amount").
+		Where("\"outletId\" = ? AND status IN ?", outletID, []models.OrderStatus{
 			models.OrderStatusDelivered,
 			models.OrderStatusPartiallyDelivered,
 		}).
-		Group("type, delivery_slot").
+		Group("type, \"deliverySlot\"").
 		Scan(&orderStats)
 
 	totalRevenue := 0.0
@@ -87,19 +87,19 @@ func GetHomeDetails(c *gin.Context) {
 
 	// Get best seller
 	type BestSellerResult struct {
-		ProductID    int
+		ProductID     int
 		TotalQuantity int
 	}
 
 	var bestSellerResult BestSellerResult
 	err := database.DB.Model(&models.OrderItem{}).
-		Select("product_id, SUM(quantity) as total_quantity").
-		Joins("JOIN orders ON orders.id = order_items.order_id").
-		Where("orders.outlet_id = ? AND orders.status IN ?", outletID, []models.OrderStatus{
+		Select("\"productId\", SUM(quantity) as total_quantity").
+		Joins("JOIN \"Order\" ON \"Order\".id = \"OrderItem\".\"orderId\"").
+		Where("\"Order\".\"outletId\" = ? AND \"Order\".status IN ?", outletID, []models.OrderStatus{
 			models.OrderStatusDelivered,
 			models.OrderStatusPartiallyDelivered,
 		}).
-		Group("product_id").
+		Group("\"productId\"").
 		Order("total_quantity DESC").
 		Limit(1).
 		Scan(&bestSellerResult).Error
@@ -120,15 +120,15 @@ func GetHomeDetails(c *gin.Context) {
 	// Total wallet recharge
 	var totalRechargedAmount float64
 	database.DB.Model(&models.Wallet{}).
-		Select("COALESCE(SUM(total_recharged), 0)").
-		Joins("JOIN customer_details ON customer_details.id = wallets.customer_id").
-		Joins("JOIN users ON users.id = customer_details.user_id").
-		Where("users.outlet_id = ?", outletID).
+		Select("COALESCE(SUM(\"totalRecharged\"), 0)").
+		Joins("JOIN \"CustomerDetails\" ON \"CustomerDetails\".id = \"Wallet\".\"customerId\"").
+		Joins("JOIN \"User\" ON \"User\".id = \"CustomerDetails\".\"userId\"").
+		Where("\"User\".\"outletId\" = ?", outletID).
 		Scan(&totalRechargedAmount)
 
 	// Low stock products
 	var lowStock []models.Inventory
-	database.DB.Where("outlet_id = ?", outletID).
+	database.DB.Where(map[string]interface{}{"outletId": outletID}).
 		Where("quantity < threshold").
 		Preload("Product").
 		Find(&lowStock)
@@ -145,13 +145,13 @@ func GetHomeDetails(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"totalRevenue":          totalRevenue,
-		"appOrders":             appOrders,
-		"manualOrders":          manualOrders,
-		"peakSlot":              peakSlot,
-		"bestSellerProduct":     bestSellerProduct,
-		"totalRechargedAmount":  totalRechargedAmount,
-		"lowStockProducts":      lowStockProducts,
+		"totalRevenue":         totalRevenue,
+		"appOrders":            appOrders,
+		"manualOrders":         manualOrders,
+		"peakSlot":             peakSlot,
+		"bestSellerProduct":    bestSellerProduct,
+		"totalRechargedAmount": totalRechargedAmount,
+		"lowStockProducts":     lowStockProducts,
 	})
 }
 
@@ -176,14 +176,14 @@ func RecentOrders(c *gin.Context) {
 
 	// Count total orders
 	var totalOrders int64
-	database.DB.Model(&models.Order{}).Where("outlet_id = ?", outletID).Count(&totalOrders)
+	database.DB.Model(&models.Order{}).Where("\"outletId\" = ?", outletID).Count(&totalOrders)
 
 	// Fetch orders
 	var orders []models.Order
-	database.DB.Where("outlet_id = ?", outletID).
+	database.DB.Where("\"outletId\" = ?", outletID).
 		Preload("Customer.User").
 		Preload("Items.Product").
-		Order("created_at DESC").
+		Order("\"createdAt\" DESC").
 		Limit(limit).
 		Offset(skip).
 		Find(&orders)
@@ -246,9 +246,9 @@ func GetTicketsCount(c *gin.Context) {
 
 	var ticketCount int64
 	database.DB.Model(&models.Ticket{}).
-		Joins("JOIN customer_details ON customer_details.id = tickets.customer_id").
-		Joins("JOIN users ON users.id = customer_details.user_id").
-		Where("users.outlet_id = ?", user.OutletID).
+		Joins("JOIN \"CustomerDetails\" ON \"CustomerDetails\".id = \"Ticket\".\"customerId\"").
+		Joins("JOIN \"User\" ON \"User\".id = \"CustomerDetails\".\"userId\"").
+		Where("\"User\".\"outletId\" = ?", user.OutletID).
 		Count(&ticketCount)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -272,7 +272,7 @@ func GetOrder(c *gin.Context) {
 
 	var order models.Order
 	if err := database.DB.
-		Where("id = ? AND outlet_id = ?", orderID, outletID).
+		Where("id = ? AND \"outletId\" = ?", orderID, outletID).
 		Preload("Customer.User").
 		Preload("Outlet").
 		Preload("Items.Product").
@@ -347,7 +347,7 @@ func UpdateOrder(c *gin.Context) {
 	// Fetch order with relationships
 	var order models.Order
 	if err := database.DB.
-		Where("id = ? AND outlet_id = ?", req.OrderID, req.OutletID).
+		Where("id = ? AND \"outletId\" = ?", req.OrderID, req.OutletID).
 		Preload("Items").
 		Preload("Customer").
 		First(&order).Error; err != nil {

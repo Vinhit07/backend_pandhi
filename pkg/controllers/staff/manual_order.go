@@ -34,7 +34,7 @@ func AddManualOrder(c *gin.Context) {
 	for _, item := range req.Items {
 		var inventory models.Inventory
 		if err := database.DB.
-			Where("outlet_id = ? AND product_id = ?", req.OutletID, item.ProductID).
+			Where("\"outletId\" = ? AND \"productId\" = ?", req.OutletID, item.ProductID).
 			First(&inventory).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{
 				"message": "Inventory not found for product ID " + string(rune(item.ProductID)),
@@ -85,7 +85,7 @@ func AddManualOrder(c *gin.Context) {
 
 			// Deduct inventory
 			tx.Model(&models.Inventory{}).
-				Where("outlet_id = ? AND product_id = ?", req.OutletID, item.ProductID).
+				Where("\"outletId\" = ? AND \"productId\" = ?", req.OutletID, item.ProductID).
 				Update("quantity", gorm.Expr("quantity - ?", item.Quantity))
 		}
 
@@ -116,7 +116,7 @@ func GetProducts(c *gin.Context) {
 
 	// Fetch products with inventory > 0
 	var inventories []models.Inventory
-	database.DB.Where("outlet_id = ? AND quantity > 0", outletID).
+	database.DB.Where("\"outletId\" = ? AND quantity > 0", outletID).
 		Preload("Product").
 		Find(&inventories)
 
