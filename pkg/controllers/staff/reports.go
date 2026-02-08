@@ -88,10 +88,12 @@ func GetOrderTypeBreakdown(c *gin.Context) {
 	database.DB.Model(&models.Order{}).Where("\"outletId\" = ? AND type = ? AND \"createdAt\" >= ? AND \"createdAt\" <= ?",
 		outletID, models.OrderTypeManual, from, to).Count(&manualOrders)
 
-	c.JSON(http.StatusOK, gin.H{
-		"appOrders":    appOrders,
-		"manualOrders": manualOrders,
-	})
+	// Return as array for pie chart compatibility
+	result := []gin.H{
+		{"name": "App Orders", "value": appOrders},
+		{"name": "Manual Orders", "value": manualOrders},
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 // GetNewCustomersTrend returns new customers by date
@@ -197,12 +199,12 @@ func GetCategoryBreakdown(c *gin.Context) {
 	}
 
 	type Result struct {
-		Category   string `json:"category"`
-		OrderCount int    `json:"orderCount"`
+		Name  string `json:"name"`
+		Value int    `json:"value"`
 	}
 	result := []Result{}
 	for category, count := range categoryTotals {
-		result = append(result, Result{Category: category, OrderCount: count})
+		result = append(result, Result{Name: category, Value: count})
 	}
 
 	c.JSON(http.StatusOK, result)
@@ -244,12 +246,12 @@ func GetDeliveryTimeOrders(c *gin.Context) {
 		Scan(&slotData)
 
 	type Result struct {
-		DeliverySlot string `json:"deliverySlot"`
-		OrderCount   int64  `json:"orderCount"`
+		Slot   string `json:"slot"`
+		Orders int64  `json:"orders"`
 	}
 	result := make([]Result, len(slotData))
 	for i, data := range slotData {
-		result[i] = Result{DeliverySlot: data.DeliverySlot, OrderCount: data.Count}
+		result[i] = Result{Slot: data.DeliverySlot, Orders: data.Count}
 	}
 
 	c.JSON(http.StatusOK, result)

@@ -25,7 +25,7 @@ func GetStaffProfile(c *gin.Context) {
 
 	// Get staff details with outlet
 	var staff models.StaffDetails
-	if err := database.DB.Where("user_id = ?", user.ID).
+	if err := database.DB.Where("\"userId\" = ?", user.ID).
 		Preload("Outlet").
 		First(&staff).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Staff not found"})
@@ -98,7 +98,7 @@ func UpdateStaffProfile(c *gin.Context) {
 
 	// Get staff details
 	var staff models.StaffDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&staff).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&staff).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Staff not found"})
 		return
 	}

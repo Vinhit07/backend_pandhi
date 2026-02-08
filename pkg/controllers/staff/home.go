@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -35,54 +36,73 @@ func GetHomeDetails(c *gin.Context) {
 
 	outletID := *user.OutletID
 
-	// Calculate order stats
-	type OrderStat struct {
-		Type         models.OrderType
-		DeliverySlot *models.DeliverySlot
-		Count        int64
-		TotalAmount  float64
+	// Calculate order stats for orders DELIVERED TODAY
+	// Use DATE comparison to avoid timezone issues
+	var statsResult struct {
+		TotalRevenue float64
+		OrderCount   int64
 	}
-
-	var orderStats []OrderStat
 	database.DB.Model(&models.Order{}).
-		Select("type, \"deliverySlot\", COUNT(*) as count, COALESCE(SUM(\"totalAmount\"), 0) as total_amount").
-		Where("\"outletId\" = ? AND status IN ?", outletID, []models.OrderStatus{
-			models.OrderStatusDelivered,
-			models.OrderStatusPartiallyDelivered,
-		}).
-		Group("type, \"deliverySlot\"").
-		Scan(&orderStats)
+		Select("COALESCE(SUM(\"totalAmount\"), 0) as total_revenue, COUNT(*) as order_count").
+		Where("\"outletId\" = ? AND status IN ? AND DATE(\"deliveredAt\") = CURRENT_DATE",
+			outletID,
+			[]models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered},
+		).
+		Scan(&statsResult)
 
-	totalRevenue := 0.0
+	log.Printf("Dashboard Stats - Total Revenue: %.2f, Order Count: %d", statsResult.TotalRevenue, statsResult.OrderCount)
+
+	totalRevenue := statsResult.TotalRevenue
+
+	// Get order counts by type for orders delivered today
+	type OrderTypeCount struct {
+		Type  models.OrderType
+		Count int64
+	}
+	var typeCounts []OrderTypeCount
+	database.DB.Model(&models.Order{}).
+		Select("type, COUNT(*) as count").
+		Where("\"outletId\" = ? AND status IN ? AND DATE(\"deliveredAt\") = CURRENT_DATE",
+			outletID,
+			[]models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered},
+		).
+		Group("type").
+		Scan(&typeCounts)
+
+	log.Printf("Dashboard Stats - Type Counts: %+v", typeCounts)
+
 	appOrders := int64(0)
 	manualOrders := int64(0)
-	slotCounts := make(map[string]int64)
-
-	for _, stat := range orderStats {
-		totalRevenue += stat.TotalAmount
-
-		if stat.Type == models.OrderTypeApp {
-			appOrders += stat.Count
+	for _, tc := range typeCounts {
+		if tc.Type == models.OrderTypeApp {
+			appOrders = tc.Count
 		}
-		if stat.Type == models.OrderTypeManual {
-			manualOrders += stat.Count
-		}
-
-		if stat.DeliverySlot != nil {
-			slotKey := string(*stat.DeliverySlot)
-			slotCounts[slotKey] += stat.Count
+		if tc.Type == models.OrderTypeManual {
+			manualOrders = tc.Count
 		}
 	}
+
+	// Get delivery slot counts for peak time (all time, not just today)
+	type SlotCount struct {
+		DeliverySlot string
+		Count        int64
+	}
+	var slotCounts []SlotCount
+	database.DB.Model(&models.Order{}).
+		Select("\"deliverySlot\", COUNT(*) as count").
+		Where("\"outletId\" = ? AND status IN ? AND \"deliverySlot\" IS NOT NULL AND \"deliverySlot\" != ''",
+			outletID,
+			[]models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered},
+		).
+		Group("\"deliverySlot\"").
+		Order("count DESC").
+		Limit(1).
+		Scan(&slotCounts)
 
 	// Find peak slot
 	var peakSlot *string
-	maxSlotCount := int64(0)
-	for slot, count := range slotCounts {
-		if count > maxSlotCount {
-			maxSlotCount = count
-			slotCopy := slot
-			peakSlot = &slotCopy
-		}
+	if len(slotCounts) > 0 {
+		peakSlot = &slotCounts[0].DeliverySlot
 	}
 
 	// Get best seller
@@ -166,6 +186,8 @@ func RecentOrders(c *gin.Context) {
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	status := c.Query("status") // Get status filter (e.g., "pending", "delivered", etc.)
+	
 	if page < 1 {
 		page = 1
 	}
@@ -174,14 +196,20 @@ func RecentOrders(c *gin.Context) {
 	}
 	skip := (page - 1) * limit
 
+	// Build query with optional status filter
+	query := database.DB.Model(&models.Order{}).Where("\"outletId\" = ?", outletID)
+	if status != "" {
+		// Convert status to uppercase to match OrderStatus enum
+		query = query.Where("UPPER(status) = ?", strings.ToUpper(status))
+	}
+
 	// Count total orders
 	var totalOrders int64
-	database.DB.Model(&models.Order{}).Where("\"outletId\" = ?", outletID).Count(&totalOrders)
+	query.Count(&totalOrders)
 
 	// Fetch orders
 	var orders []models.Order
-	database.DB.Where("\"outletId\" = ?", outletID).
-		Preload("Customer.User").
+	query.Preload("Customer.User").
 		Preload("Items.Product").
 		Order("\"createdAt\" DESC").
 		Limit(limit).
@@ -368,13 +396,13 @@ func UpdateOrder(c *gin.Context) {
 			// Update order status
 			tx.Model(&order).Updates(map[string]interface{}{
 				"status":       models.OrderStatusCancelled,
-				"delivered_at": nil,
+				"deliveredAt": nil,
 			})
 
 			// Restore stock for all items
 			for _, item := range order.Items {
 				tx.Model(&models.Inventory{}).
-					Where("product_id = ?", item.ProductID).
+					Where("\"productId\" = ?", item.ProductID).
 					Update("quantity", gorm.Expr("quantity + ?", item.Quantity))
 
 				tx.Create(&models.StockHistory{
@@ -388,7 +416,7 @@ func UpdateOrder(c *gin.Context) {
 			// Refund logic for APP orders
 			if order.Type == models.OrderTypeApp && order.CustomerID != nil {
 				var wallet models.Wallet
-				if err := tx.Where("customer_id = ?", *order.CustomerID).First(&wallet).Error; err == nil {
+				if err := tx.Where("\"customerId\" = ?", *order.CustomerID).First(&wallet).Error; err == nil {
 					now := time.Now()
 					tx.Model(&wallet).Updates(map[string]interface{}{
 						"balance": gorm.Expr("balance + ?", order.TotalAmount),
@@ -406,7 +434,7 @@ func UpdateOrder(c *gin.Context) {
 
 			// Refund coupon
 			var couponUsage models.CouponUsage
-			if tx.Where("order_id = ?", req.OrderID).First(&couponUsage).Error == nil {
+			if tx.Where("\"orderId\" = ?", req.OrderID).First(&couponUsage).Error == nil {
 				tx.Delete(&couponUsage)
 				tx.Model(&models.Coupon{}).
 					Where("id = ?", couponUsage.CouponID).
@@ -424,10 +452,10 @@ func UpdateOrder(c *gin.Context) {
 			if totalFreeQty > 0 && order.Customer != nil {
 				today := time.Now().Truncate(24 * time.Hour)
 				var quota models.UserFreeQuota
-				if tx.Where("user_id = ? AND consumption_date = ?", order.Customer.UserID, today).
+				if tx.Where("\"userId\" = ? AND \"consumptionDate\" = ?", order.Customer.UserID, today).
 					First(&quota).Error == nil {
 					if quota.QuantityUsed >= totalFreeQty {
-						tx.Model(&quota).Update("quantity_used", gorm.Expr("quantity_used - ?", totalFreeQty))
+						tx.Model(&quota).Update("\"quantityUsed\"", gorm.Expr("\"quantityUsed\" - ?", totalFreeQty))
 					}
 				}
 			}
@@ -453,13 +481,13 @@ func UpdateOrder(c *gin.Context) {
 
 		err := database.DB.Transaction(func(tx *gorm.DB) error {
 			tx.Model(&models.OrderItem{}).
-				Where("order_id = ? AND status != ?", order.ID, models.OrderItemStatusDelivered).
+				Where("\"orderId\" = ? AND status != ?", order.ID, models.OrderItemStatusDelivered).
 				Update("status", models.OrderItemStatusDelivered)
 
 			now := time.Now()
 			tx.Model(&order).Updates(map[string]interface{}{
 				"status":       models.OrderStatusDelivered,
-				"delivered_at": &now,
+				"deliveredAt": &now,
 			})
 			return nil
 		})
@@ -508,7 +536,7 @@ func UpdateOrder(c *gin.Context) {
 
 			tx.Model(&order).Updates(map[string]interface{}{
 				"status":       status,
-				"delivered_at": deliveredAt,
+				"deliveredAt": deliveredAt,
 			})
 			return nil
 		})
@@ -557,13 +585,13 @@ func UpdateOrder(c *gin.Context) {
 			now := time.Now()
 			tx.Model(&order).Updates(map[string]interface{}{
 				"status":       models.OrderStatusDelivered,
-				"delivered_at": &now,
+				"deliveredAt": &now,
 			})
 
 			// Restore stock
 			for _, item := range undeliveredItems {
 				tx.Model(&models.Inventory{}).
-					Where("product_id = ?", item.ProductID).
+					Where("\"productId\" = ?", item.ProductID).
 					Update("quantity", gorm.Expr("quantity + ?", item.Quantity))
 
 				tx.Create(&models.StockHistory{
@@ -577,7 +605,7 @@ func UpdateOrder(c *gin.Context) {
 			// Refund for APP orders
 			if order.Type == models.OrderTypeApp && order.CustomerID != nil && refundAmount > 0 {
 				var wallet models.Wallet
-				if err := tx.Where("customer_id = ?", *order.CustomerID).First(&wallet).Error; err == nil {
+				if err := tx.Where("\"customerId\" = ?", *order.CustomerID).First(&wallet).Error; err == nil {
 					tx.Model(&wallet).Update("balance", gorm.Expr("balance + ?", refundAmount))
 
 					tx.Create(&models.WalletTransaction{
@@ -600,10 +628,10 @@ func UpdateOrder(c *gin.Context) {
 			if totalFreeQty > 0 && order.Customer != nil {
 				today := time.Now().Truncate(24 * time.Hour)
 				var quota models.UserFreeQuota
-				if tx.Where("user_id = ? AND consumption_date = ?", order.Customer.UserID, today).
+				if tx.Where("\"userId\" = ? AND \"consumptionDate\" = ?", order.Customer.UserID, today).
 					First(&quota).Error == nil {
 					if quota.QuantityUsed >= totalFreeQty {
-						tx.Model(&quota).Update("quantity_used", gorm.Expr("quantity_used - ?", totalFreeQty))
+						tx.Model(&quota).Update("\"quantityUsed\"", gorm.Expr("\"quantityUsed\" - ?", totalFreeQty))
 					}
 				}
 			}
