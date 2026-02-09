@@ -4,6 +4,7 @@ import (
 	"backend_pandhi/pkg/database"
 	"backend_pandhi/pkg/models"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -35,26 +36,31 @@ func GetHomeDetails(c *gin.Context) {
 	}
 
 	outletID := *user.OutletID
+	
+	log.Printf("GetHomeDetails called for outletID: %d", outletID)
 
-	// Calculate order stats for orders DELIVERED TODAY
-	// Use DATE comparison to avoid timezone issues
+	// Calculate order stats for all delivered orders
 	var statsResult struct {
 		TotalRevenue float64
 		OrderCount   int64
 	}
 	database.DB.Model(&models.Order{}).
 		Select("COALESCE(SUM(\"totalAmount\"), 0) as total_revenue, COUNT(*) as order_count").
-		Where("\"outletId\" = ? AND status IN ? AND DATE(\"deliveredAt\") = CURRENT_DATE",
+		Where("\"outletId\" = ? AND status IN ?",
 			outletID,
 			[]models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered},
 		).
 		Scan(&statsResult)
 
-	log.Printf("Dashboard Stats - Total Revenue: %.2f, Order Count: %d", statsResult.TotalRevenue, statsResult.OrderCount)
+	// Debug: Check total orders in DB
+	var totalOrderCount int64
+	database.DB.Model(&models.Order{}).Where("\"outletId\" = ?", outletID).Count(&totalOrderCount)
+	log.Printf("Dashboard Debug - OutletID: %d, Total Orders in DB: %d, Delivered Orders: %d, Revenue: %.2f", 
+		outletID, totalOrderCount, statsResult.OrderCount, statsResult.TotalRevenue)
 
 	totalRevenue := statsResult.TotalRevenue
 
-	// Get order counts by type for orders delivered today
+	// Get order counts by type for all delivered orders
 	type OrderTypeCount struct {
 		Type  models.OrderType
 		Count int64
@@ -62,7 +68,7 @@ func GetHomeDetails(c *gin.Context) {
 	var typeCounts []OrderTypeCount
 	database.DB.Model(&models.Order{}).
 		Select("type, COUNT(*) as count").
-		Where("\"outletId\" = ? AND status IN ? AND DATE(\"deliveredAt\") = CURRENT_DATE",
+		Where("\"outletId\" = ? AND status IN ?",
 			outletID,
 			[]models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered},
 		).
@@ -228,10 +234,14 @@ func RecentOrders(c *gin.Context) {
 
 		items := make([]gin.H, len(order.Items))
 		for j, item := range order.Items {
+			unitPrice := item.UnitPrice
+			if unitPrice == 0 {
+				unitPrice = item.Product.Price
+			}
 			items[j] = gin.H{
 				"name":      item.Product.Name,
 				"quantity":  item.Quantity,
-				"unitPrice": item.UnitPrice,
+				"unitPrice": unitPrice,
 			}
 		}
 
@@ -316,13 +326,17 @@ func GetOrder(c *gin.Context) {
 
 	items := make([]gin.H, len(order.Items))
 	for i, item := range order.Items {
+		unitPrice := item.UnitPrice
+		if unitPrice == 0 {
+			unitPrice = item.Product.Price
+		}
 		items[i] = gin.H{
 			"id":                 item.ID,
 			"productName":        item.Product.Name,
 			"productDescription": item.Product.Description,
 			"quantity":           item.Quantity,
-			"unitPrice":          item.UnitPrice,
-			"totalPrice":         float64(item.Quantity) * item.UnitPrice,
+			"unitPrice":          unitPrice,
+			"totalPrice":         float64(item.Quantity) * unitPrice,
 			"itemStatus":         item.Status,
 		}
 	}

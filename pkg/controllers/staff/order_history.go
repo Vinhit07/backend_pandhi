@@ -77,7 +77,12 @@ func GetOrderHistory(c *gin.Context) {
 				"id":          item.ID,
 				"productName": item.Product.Name,
 				"quantity":    item.Quantity,
-				"unitPrice":   item.UnitPrice,
+				"unitPrice":   func() float64 {
+					if item.UnitPrice == 0 {
+						return item.Product.Price
+					}
+					return item.UnitPrice
+				}(),
 				"status":      item.Status,
 			}
 		}
