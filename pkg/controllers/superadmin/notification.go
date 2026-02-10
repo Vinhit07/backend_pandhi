@@ -47,6 +47,7 @@ func CreateScheduledNotification(c *gin.Context) {
 	}
 
 	notification := models.ScheduledNotification{
+		Title:       req.Title,
 		Message:     req.Message,
 		Priority:    models.Priority(priority),
 		ImageURL:    req.ImageURL,
