@@ -45,8 +45,18 @@ func CreateCoupon(c *gin.Context) {
 		return
 	}
 
-	validFrom, _ := time.Parse(time.RFC3339, req.ValidFrom)
-	validUntil, _ := time.Parse(time.RFC3339, req.ValidUntil)
+	// Parse and validate dates
+	validFrom, err := time.Parse(time.RFC3339, req.ValidFrom)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "validFrom must be in RFC3339 format (e.g., 2024-01-01T10:00:00Z)"})
+		return
+	}
+
+	validUntil, err := time.Parse(time.RFC3339, req.ValidUntil)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "validUntil must be in RFC3339 format (e.g., 2024-01-01T10:00:00Z)"})
+		return
+	}
 
 	isActive := true
 	if req.IsActive != nil {
@@ -76,11 +86,17 @@ func CreateCoupon(c *gin.Context) {
 	}
 
 	if err := database.DB.Create(&coupon).Error; err != nil {
+		// Check for duplicate key error
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "Coupon_code_key") {
+			c.JSON(http.StatusConflict, gin.H{"message": "A coupon with this code already exists"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Internal server error", "error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
 		"message": "Coupon created successfully",
 		"data":    coupon,
 	})
@@ -132,5 +148,8 @@ func DeleteCoupon(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Coupon deleted successfully"})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Coupon deleted successfully",
+	})
 }

@@ -68,12 +68,23 @@ func OutletTotalOrders(c *gin.Context) {
 
 		items := make([]gin.H, len(order.Items))
 		for j, item := range order.Items {
+			// Use Product.Price if UnitPrice is 0 (same logic as staff order history)
+			price := item.UnitPrice
+			log.Printf("   [Item %d] ProductName: %s, UnitPrice: %.2f, Product.ID: %d, Product.Price: %.2f",
+				j, item.Product.Name, item.UnitPrice, item.Product.ID, item.Product.Price)
+
+			if price == 0 && item.Product.ID > 0 {
+				price = item.Product.Price
+				log.Printf("   [Item %d] Using Product.Price fallback: %.2f", j, price)
+			}
+
 			items[j] = gin.H{
 				"productName": item.Product.Name,
 				"quantity":    item.Quantity,
-				"unitPrice":   item.UnitPrice,
-				"totalPrice":  item.UnitPrice * float64(item.Quantity),
+				"unitPrice":   price,
+				"totalPrice":  price * float64(item.Quantity),
 			}
+			log.Printf("   [Item %d] Final item: unitPrice=%.2f, totalPrice=%.2f", j, price, price*float64(item.Quantity))
 		}
 
 		formatted[i] = gin.H{

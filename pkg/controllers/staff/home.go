@@ -36,41 +36,68 @@ func GetHomeDetails(c *gin.Context) {
 	}
 
 	outletID := *user.OutletID
-	
+
 	log.Printf("GetHomeDetails called for outletID: %d", outletID)
+
+	// Convert status enums to strings for query
+	deliveredStatuses := []string{
+		string(models.OrderStatusDelivered),
+		string(models.OrderStatusPartiallyDelivered),
+	}
+
+	log.Printf("DEBUG: Looking for statuses: %v", deliveredStatuses)
 
 	// Calculate order stats for all delivered orders
 	var statsResult struct {
 		TotalRevenue float64
 		OrderCount   int64
 	}
+
 	database.DB.Model(&models.Order{}).
-		Select("COALESCE(SUM(\"totalAmount\"), 0) as total_revenue, COUNT(*) as order_count").
+		Select("COALESCE(SUM(\"totalAmount\"), 0) as \"TotalRevenue\", COUNT(*) as \"OrderCount\"").
 		Where("\"outletId\" = ? AND status IN ?",
 			outletID,
-			[]models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered},
+			deliveredStatuses,
 		).
 		Scan(&statsResult)
 
-	// Debug: Check total orders in DB
+	// Debug: Check total orders in DB and what statuses exist
 	var totalOrderCount int64
 	database.DB.Model(&models.Order{}).Where("\"outletId\" = ?", outletID).Count(&totalOrderCount)
-	log.Printf("Dashboard Debug - OutletID: %d, Total Orders in DB: %d, Delivered Orders: %d, Revenue: %.2f", 
-		outletID, totalOrderCount, statsResult.OrderCount, statsResult.TotalRevenue)
+
+	// Check what status values actually exist in the database
+	type StatusCount struct {
+		Status string
+		Count  int64
+	}
+	var statusCounts []StatusCount
+	database.DB.Model(&models.Order{}).
+		Select("status as \"Status\", COUNT(*) as \"Count\"").
+		Where("\"outletId\" = ?", outletID).
+		Group("status").
+		Scan(&statusCounts)
+
+	log.Printf("=== Dashboard Debug ===")
+	log.Printf("OutletID: %d", outletID)
+	log.Printf("Total Orders in DB: %d", totalOrderCount)
+	log.Printf("Status breakdown in DB: %+v", statusCounts)
+	log.Printf("Delivered Orders Found: %d", statsResult.OrderCount)
+	log.Printf("Revenue from Delivered: %.2f", statsResult.TotalRevenue)
+	log.Printf("======================")
 
 	totalRevenue := statsResult.TotalRevenue
 
 	// Get order counts by type for all delivered orders
 	type OrderTypeCount struct {
-		Type  models.OrderType
+		Type  string
 		Count int64
 	}
 	var typeCounts []OrderTypeCount
 	database.DB.Model(&models.Order{}).
-		Select("type, COUNT(*) as count").
+		Select("type as \"Type\", COUNT(*) as \"Count\"").
 		Where("\"outletId\" = ? AND status IN ?",
 			outletID,
-			[]models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered},
+			deliveredStatuses,
 		).
 		Group("type").
 		Scan(&typeCounts)
@@ -80,10 +107,10 @@ func GetHomeDetails(c *gin.Context) {
 	appOrders := int64(0)
 	manualOrders := int64(0)
 	for _, tc := range typeCounts {
-		if tc.Type == models.OrderTypeApp {
+		if tc.Type == string(models.OrderTypeApp) {
 			appOrders = tc.Count
 		}
-		if tc.Type == models.OrderTypeManual {
+		if tc.Type == string(models.OrderTypeManual) {
 			manualOrders = tc.Count
 		}
 	}
@@ -95,13 +122,13 @@ func GetHomeDetails(c *gin.Context) {
 	}
 	var slotCounts []SlotCount
 	database.DB.Model(&models.Order{}).
-		Select("\"deliverySlot\", COUNT(*) as count").
+		Select("\"deliverySlot\" as \"DeliverySlot\", COUNT(*) as \"Count\"").
 		Where("\"outletId\" = ? AND status IN ? AND \"deliverySlot\" IS NOT NULL AND \"deliverySlot\" != ''",
 			outletID,
-			[]models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered},
+			deliveredStatuses,
 		).
 		Group("\"deliverySlot\"").
-		Order("count DESC").
+		Order("\"Count\" DESC").
 		Limit(1).
 		Scan(&slotCounts)
 
@@ -119,14 +146,11 @@ func GetHomeDetails(c *gin.Context) {
 
 	var bestSellerResult BestSellerResult
 	err := database.DB.Model(&models.OrderItem{}).
-		Select("\"productId\", SUM(quantity) as total_quantity").
+		Select("\"productId\" as \"ProductID\", SUM(quantity) as \"TotalQuantity\"").
 		Joins("JOIN \"Order\" ON \"Order\".id = \"OrderItem\".\"orderId\"").
-		Where("\"Order\".\"outletId\" = ? AND \"Order\".status IN ?", outletID, []models.OrderStatus{
-			models.OrderStatusDelivered,
-			models.OrderStatusPartiallyDelivered,
-		}).
+		Where("\"Order\".\"outletId\" = ? AND \"Order\".status IN ?", outletID, deliveredStatuses).
 		Group("\"productId\"").
-		Order("total_quantity DESC").
+		Order("\"TotalQuantity\" DESC").
 		Limit(1).
 		Scan(&bestSellerResult).Error
 
@@ -193,7 +217,7 @@ func RecentOrders(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	status := c.Query("status") // Get status filter (e.g., "pending", "delivered", etc.)
-	
+
 	if page < 1 {
 		page = 1
 	}
@@ -409,7 +433,7 @@ func UpdateOrder(c *gin.Context) {
 		err := database.DB.Transaction(func(tx *gorm.DB) error {
 			// Update order status
 			tx.Model(&order).Updates(map[string]interface{}{
-				"status":       models.OrderStatusCancelled,
+				"status":      models.OrderStatusCancelled,
 				"deliveredAt": nil,
 			})
 
@@ -500,7 +524,7 @@ func UpdateOrder(c *gin.Context) {
 
 			now := time.Now()
 			tx.Model(&order).Updates(map[string]interface{}{
-				"status":       models.OrderStatusDelivered,
+				"status":      models.OrderStatusDelivered,
 				"deliveredAt": &now,
 			})
 			return nil
@@ -549,7 +573,7 @@ func UpdateOrder(c *gin.Context) {
 			}
 
 			tx.Model(&order).Updates(map[string]interface{}{
-				"status":       status,
+				"status":      status,
 				"deliveredAt": deliveredAt,
 			})
 			return nil
@@ -598,7 +622,7 @@ func UpdateOrder(c *gin.Context) {
 		err := database.DB.Transaction(func(tx *gorm.DB) error {
 			now := time.Now()
 			tx.Model(&order).Updates(map[string]interface{}{
-				"status":       models.OrderStatusDelivered,
+				"status":      models.OrderStatusDelivered,
 				"deliveredAt": &now,
 			})
 
