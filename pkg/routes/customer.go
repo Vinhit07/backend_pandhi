@@ -41,21 +41,24 @@ func RegisterCustomerRoutes(router *gin.RouterGroup) {
 		customerGroup.GET("/feedback/product/:productId/reviews", customer.GetProductReviews)
 
 		// Order management
-		customerGroup.POST("/outlets/customer-order/", customer.CustomerAppOrder)                              // STUB - requires quota/inventory/payment integration
+		customerGroup.POST("/outlets/customer-order/", customer.CustomerAppOrder) // STUB - requires quota/inventory/payment integration
 		customerGroup.GET("/outlets/customer-ongoing-order/", customer.CustomerAppOngoingOrderList)
 		customerGroup.GET("/outlets/customer-order-history/", customer.CustomerAppOrderHistory)
 		customerGroup.PUT("/outlets/customer-cancel-order/:orderId", customer.CustomerAppCancelOrder)
-		customerGroup.POST("/outlets/create-razorpay-order", customer.CreateRazorpayOrder)                     // STUB
-		customerGroup.POST("/outlets/verify-razorpay-payment", customer.VerifyRazorpayPayment)                 // STUB
+		customerGroup.POST("/outlets/create-razorpay-order", customer.CreateRazorpayOrder)     // STUB
+		customerGroup.POST("/outlets/verify-razorpay-payment", customer.VerifyRazorpayPayment) // STUB
 
 		// Wallet management
 		customerGroup.POST("/outlets/create-wallet-recharge-order", customer.CreateWalletRechargeOrder)
 		customerGroup.POST("/outlets/verify-wallet-recharge", customer.VerifyWalletRecharge)
 		customerGroup.GET("/outlets/get-wallet-details", customer.GetWalletDetails)
-		customerGroup.POST("/outlets/recharge-wallet", customer.RechargeWallet)                        // Legacy cash recharge
+		customerGroup.POST("/outlets/recharge-wallet", customer.RechargeWallet) // Legacy cash recharge
 		customerGroup.GET("/outlets/get-recent-recharge", customer.RecentTrans)
 		customerGroup.GET("/outlets/get-recharge-history", customer.GetRechargeHistory)
 		customerGroup.GET("/outlets/service-charge-breakdown", customer.GetServiceChargeBreakdown)
+
+		// Payment config
+		customerGroup.GET("/outlets/razorpay-key", customer.GetRazorpayKey)
 	}
 
 	// Public customer routes (no auth required)
