@@ -43,7 +43,7 @@ func CreateWalletRechargeOrder(c *gin.Context) {
 
 	// Get customer details
 	var customer models.CustomerDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&customer).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&customer).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Customer details not found"})
 		return
 	}
@@ -128,7 +128,7 @@ func VerifyWalletRecharge(c *gin.Context) {
 			// Or just assume standard calculation without specific notes.
 		},
 	}
-	
+
 	// CRITICAL: We need the amount to recharge the wallet!
 	// Existing code extracts "wallet_amount" from notes.
 	// If `CreateRazorpayOrder` didn't add notes, this fails.
@@ -138,13 +138,13 @@ func VerifyWalletRecharge(c *gin.Context) {
 	// But for now, to fix build, I will comment out the notes extraction and use a placeholder or better yet,
 	// I will just add FetchPaymentDetails to services/razorpay.go in the NEXT step if this works.
 	// For now, let's fix method signature.
-	
-	// Wait, I can't easily get the amount without fetching. 
+
+	// Wait, I can't easily get the amount without fetching.
 	// I'll make a simplified assumption: The user sends the amount in body? No, the verification endpoint only takes IDs.
 	// I MUST fetch payment details to know how much to credit.
 	// I will add FetchPaymentDetails to `pkg/services/razorpay.go` in a subsequent step.
 	// For this file, I'll update it to call `services.FetchPaymentDetails`.
-	
+
 	payment, err := services.FetchPaymentDetails(req.RazorpayPaymentID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -165,7 +165,7 @@ func VerifyWalletRecharge(c *gin.Context) {
 
 	// Get customer
 	var customer models.CustomerDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&customer).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&customer).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Customer details not found"})
 		return
 	}
@@ -179,7 +179,7 @@ func VerifyWalletRecharge(c *gin.Context) {
 	err = database.DB.Transaction(func(tx *gorm.DB) error {
 		// Check if already processed
 		var existing models.WalletTransaction
-		if tx.Where("razorpay_payment_id = ?", req.RazorpayPaymentID).First(&existing).Error == nil {
+		if tx.Where("\"razorpayPaymentId\" = ?", req.RazorpayPaymentID).First(&existing).Error == nil {
 			return fmt.Errorf("Payment already processed")
 		}
 
@@ -191,7 +191,7 @@ func VerifyWalletRecharge(c *gin.Context) {
 
 		// Update wallet
 		var wallet models.Wallet
-		err := tx.Where("customer_id = ?", customer.ID).First(&wallet).Error
+		err := database.DB.Where("\"customerId\" = ?", customer.ID).First(&wallet).Error
 		if err != nil {
 			// Create new wallet
 			now := time.Now()
@@ -207,9 +207,9 @@ func VerifyWalletRecharge(c *gin.Context) {
 			// Update wallet
 			now := time.Now()
 			tx.Model(&wallet).Updates(map[string]interface{}{
-				"balance":         wallet.Balance + walletAmount,
-				"total_recharged": wallet.TotalRecharged + walletAmount,
-				"last_recharged":  &now,
+				"balance":            wallet.Balance + walletAmount,
+				"\"totalRecharged\"": wallet.TotalRecharged + walletAmount,
+				"\"lastRecharged\"":  &now,
 			})
 		}
 
@@ -220,14 +220,14 @@ func VerifyWalletRecharge(c *gin.Context) {
 		}
 
 		transaction := models.WalletTransaction{
-			WalletID:           wallet.ID,
-			Amount:             walletAmount,
-			GrossAmount:        &grossAmount,
-			ServiceCharge:      &serviceCharge,
-			Method:             models.PaymentMethod(method),
-			RazorpayPaymentID:  &req.RazorpayPaymentID,
-			RazorpayOrderID:    &req.RazorpayOrderID,
-			Status:             models.WalletTransTypeRecharge,
+			WalletID:          wallet.ID,
+			Amount:            walletAmount,
+			GrossAmount:       &grossAmount,
+			ServiceCharge:     &serviceCharge,
+			Method:            models.PaymentMethod(method),
+			RazorpayPaymentID: &req.RazorpayPaymentID,
+			RazorpayOrderID:   &req.RazorpayOrderID,
+			Status:            models.WalletTransTypeRecharge,
 		}
 		tx.Create(&transaction)
 
@@ -291,14 +291,14 @@ func GetWalletDetails(c *gin.Context) {
 
 	// Get customer
 	var customer models.CustomerDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&customer).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&customer).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Customer details not found"})
 		return
 	}
 
 	// Get or create wallet
 	var wallet models.Wallet
-	err := database.DB.Where("customer_id = ?", customer.ID).First(&wallet).Error
+	err := database.DB.Where("\"customerId\" = ?", customer.ID).First(&wallet).Error
 	if err != nil {
 		wallet = models.Wallet{
 			CustomerID:     customer.ID,
