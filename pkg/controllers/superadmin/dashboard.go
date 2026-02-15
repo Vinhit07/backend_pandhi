@@ -38,16 +38,14 @@ func GetDashboardOverview(c *gin.Context) {
 	}
 
 	var totalActiveOutlets int64
+	// Active Stores should be a global count of all business outlets, not filtered by selection
 	activeOutletsQuery := database.DB.Model(&models.Outlet{}).Where(`"isActive" = ?`, true)
-	if req.OutletID > 0 {
-		activeOutletsQuery = activeOutletsQuery.Where("id = ?", req.OutletID)
-	}
 	activeOutletsQuery.Count(&totalActiveOutlets)
 
 	var totalRevenue float64
 	revenueQuery := database.DB.Model(&models.Order{}).
 		Scopes(dateFilter).
-		Where("status IN ?", []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered})
+		Where("status != ?", models.OrderStatusCancelled)
 
 	if req.OutletID > 0 {
 		revenueQuery = revenueQuery.Where(`"outletId" = ?`, req.OutletID)
@@ -55,22 +53,11 @@ func GetDashboardOverview(c *gin.Context) {
 	revenueQuery.Select("COALESCE(SUM(\"totalAmount\"), 0)").Scan(&totalRevenue)
 
 	var totalCustomers int64
-	// Customers are global, but we can filter by who ordered from this outlet if needed
-	// For now, keeping it global or simple count, unless we want unique customers per outlet
-	// If checking unique customers who ordered from this outlet:
+	customerQuery := database.DB.Model(&models.User{}).Where("role = ?", models.RoleCustomer)
 	if req.OutletID > 0 {
-		database.DB.Model(&models.Order{}).
-			Where(`"outletId" = ?`, req.OutletID).
-			Distinct("customer_id").
-			Count(&totalCustomers) // This counts orders, need distinct user_ids
-		// Correct approach for distinct customers:
-		database.DB.Model(&models.Order{}).
-			Where(`"outletId" = ?`, req.OutletID).
-			Distinct("customer_id").
-			Count(&totalCustomers)
-	} else {
-		database.DB.Model(&models.CustomerDetails{}).Count(&totalCustomers)
+		customerQuery = customerQuery.Where(`"outletId" = ?`, req.OutletID)
 	}
+	customerQuery.Count(&totalCustomers)
 
 	var totalOrders int64
 	ordersQuery := database.DB.Model(&models.Order{}).Scopes(dateFilter)
@@ -79,23 +66,27 @@ func GetDashboardOverview(c *gin.Context) {
 	}
 	ordersQuery.Count(&totalOrders)
 
-	// Top performing outlet
-	type OutletRevenue struct {
-		OutletID    int
-		TotalAmount float64
+	// Top performing outlet - find the outlet with the most revenue
+	type OutletRevenueResult struct {
+		OutletID     int     `gorm:"column:outletId"`
+		TotalRevenue float64 `gorm:"column:total_revenue"`
 	}
-	var topOutlet OutletRevenue
+	var topOutlet OutletRevenueResult
 	database.DB.Model(&models.Order{}).
 		Scopes(dateFilter).
-		Select(`"outletId", SUM("totalAmount") as "totalAmount"`).
+		Where("status != ?", models.OrderStatusCancelled).
+		Select(`"outletId", COALESCE(SUM("totalAmount"), 0) as total_revenue`).
 		Group(`"outletId"`).
-		Order(`"totalAmount" DESC`).
+		Order(`total_revenue DESC`).
 		Limit(1).Scan(&topOutlet)
+
+	fmt.Printf("[DEBUG] Top outlet - OutletID: %d, Revenue: %.2f\n", topOutlet.OutletID, topOutlet.TotalRevenue)
 
 	var topOutletDetails *models.Outlet
 	if topOutlet.OutletID > 0 {
 		topOutletDetails = &models.Outlet{}
 		database.DB.Select("id, name").First(topOutletDetails, topOutlet.OutletID)
+		fmt.Printf("[DEBUG] Top outlet details - Name: %s\n", topOutletDetails.Name)
 	}
 
 	c.JSON(http.StatusOK, gin.H{

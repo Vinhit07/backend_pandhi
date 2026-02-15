@@ -169,7 +169,7 @@ type Product struct {
 	OutletID              int      `gorm:"not null;column:outletId" json:"outletId"`
 	Category              Category `gorm:"type:text;not null;column:category" json:"category"`
 	MinValue              *int     `gorm:"default:0;column:minValue" json:"minValue"`
-	IsVeg                 bool     `gorm:"default:true;column:isVeg" json:"isVeg"`
+	IsVeg                 *bool    `gorm:"default:true;column:isVeg" json:"isVeg"`
 	RatingSum30d          float64  `gorm:"default:0;column:ratingSum30d" json:"ratingSum30d"`
 	RatingCount30d        int      `gorm:"default:0;column:ratingCount30d" json:"ratingCount30d"`
 	TrendScore            float64  `gorm:"default:0;column:trendScore" json:"trendScore"`
