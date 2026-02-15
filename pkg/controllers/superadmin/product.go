@@ -4,6 +4,7 @@ import (
 	"backend_pandhi/pkg/database"
 	"backend_pandhi/pkg/models"
 	"backend_pandhi/pkg/services"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -84,12 +85,36 @@ func AddProduct(c *gin.Context) {
 	}
 	minValue, _ := strconv.Atoi(minValueStr)
 
-	isVeg := true
-	if isVegStr == "false" {
-		isVeg = false
+	// Robust boolean parsing
+	// Debug log
+	fmt.Printf("[DEBUG] AddProduct - isVegStr: '%s', companyPaidStr: '%s'\n", isVegStr, companyPaidStr)
+
+	// Robust boolean parsing
+	isVeg := true // Default
+	if isVegStr != "" {
+		if v, err := strconv.ParseBool(isVegStr); err == nil {
+			isVeg = v
+		} else {
+             // Fallback for manual string check if ParseBool fails (though ParseBool handles "0", "1", "t", "T", "TRUE", "true", "True", "FALSE", "false", "False")
+             lowerVeg := strings.ToLower(isVegStr)
+             if lowerVeg == "false" || lowerVeg == "0" {
+                 isVeg = false
+             }
+		}
 	}
 
-	companyPaid := companyPaidStr == "true"
+	companyPaid := false // Default
+	if companyPaidStr != "" {
+		if v, err := strconv.ParseBool(companyPaidStr); err == nil {
+			companyPaid = v
+		} else {
+             if companyPaidStr == "true" || companyPaidStr == "1" {
+                companyPaid = true
+             }
+        }
+    }
+
+	fmt.Printf("[DEBUG] AddProduct - Parsed isVeg: %v, companyPaid: %v\n", isVeg, companyPaid)
 
 	crtName := strings.ToLower(name)
 
@@ -123,7 +148,7 @@ func AddProduct(c *gin.Context) {
 			OutletID:    outletID,
 			Category:    models.Category(category),
 			MinValue:    &minValue,
-			IsVeg:       isVeg,
+			IsVeg:       &isVeg,
 			CompanyPaid: companyPaid,
 		}
 
@@ -249,14 +274,21 @@ func UpdateProduct(c *gin.Context) {
 		}
 	}
 
-	isVeg := existingProduct.IsVeg
+	var isVeg bool
+	if existingProduct.IsVeg != nil {
+		isVeg = *existingProduct.IsVeg
+	}
 	if isVegStr != "" {
-		isVeg = isVegStr != "false"
+		if v, err := strconv.ParseBool(isVegStr); err == nil {
+			isVeg = v
+		}
 	}
 
 	companyPaid := existingProduct.CompanyPaid
-	if companyPaidStr == "true" {
-		companyPaid = true
+	if companyPaidStr != "" {
+		if v, err := strconv.ParseBool(companyPaidStr); err == nil {
+			companyPaid = v
+		}
 	}
 
 	// Update in transaction
@@ -269,7 +301,7 @@ func UpdateProduct(c *gin.Context) {
 			"category":    category,
 			"minValue":    minValue,
 			"outletId":    outletID,
-			"isVeg":       isVeg,
+			"isVeg":       &isVeg,
 			"companyPaid": companyPaid,
 		})
 

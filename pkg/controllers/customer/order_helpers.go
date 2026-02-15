@@ -30,7 +30,7 @@ func CustomerAppOngoingOrderList(c *gin.Context) {
 
 	// Get customer
 	var customer models.CustomerDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&customer).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&customer).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Customer not found"})
 		return
 	}
@@ -38,10 +38,10 @@ func CustomerAppOngoingOrderList(c *gin.Context) {
 	// Fetch ongoing orders
 	var orders []models.Order
 	if err := database.DB.
-		Where("customer_id = ? AND status = ?", customer.ID, models.OrderStatusPending).
+		Where("\"customerId\" = ? AND status = ?", customer.ID, models.OrderStatusPending).
 		Preload("Items.Product").
 		Preload("Outlet").
-		Order("created_at DESC").
+		Order("\"createdAt\" DESC").
 		Find(&orders).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
@@ -60,7 +60,7 @@ func CustomerAppOngoingOrderList(c *gin.Context) {
 	for i, order := range orders {
 		items := make([]gin.H, len(order.Items))
 		for j, item := range order.Items {
-// Helper to get signed URL
+			// Helper to get signed URL
 			var imageURL *string
 			if item.Product.ImageURL != nil {
 				signedURL, _ := services.GetSignedURL(*item.Product.ImageURL)
@@ -68,11 +68,11 @@ func CustomerAppOngoingOrderList(c *gin.Context) {
 			}
 
 			items[j] = gin.H{
-				"id":         item.ID,
-				"productId":  item.ProductID,
-				"quantity":   item.Quantity,
-				"unitPrice":  item.UnitPrice,
-				"status":     item.Status,
+				"id":        item.ID,
+				"productId": item.ProductID,
+				"quantity":  item.Quantity,
+				"unitPrice": item.UnitPrice,
+				"status":    item.Status,
 				"product": gin.H{
 					"id":          item.Product.ID,
 					"name":        item.Product.Name,
@@ -94,9 +94,9 @@ func CustomerAppOngoingOrderList(c *gin.Context) {
 			"createdAt":     order.CreatedAt,
 			"items":         items,
 			"outlet": gin.H{
-				"id":       order.Outlet.ID,
-				"name":     order.Outlet.Name,
-				"address":  order.Outlet.Address,
+				"id":      order.Outlet.ID,
+				"name":    order.Outlet.Name,
+				"address": order.Outlet.Address,
 			},
 		}
 	}
@@ -124,7 +124,7 @@ func CustomerAppOrderHistory(c *gin.Context) {
 
 	// Get customer
 	var customer models.CustomerDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&customer).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&customer).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Customer not found"})
 		return
 	}
@@ -132,7 +132,7 @@ func CustomerAppOrderHistory(c *gin.Context) {
 	// Fetch completed orders
 	var orders []models.Order
 	if err := database.DB.
-		Where("customer_id = ? AND status IN ?", customer.ID, []models.OrderStatus{
+		Where("\"customerId\" = ? AND status IN ?", customer.ID, []models.OrderStatus{
 			models.OrderStatusDelivered,
 			models.OrderStatusCancelled,
 			models.OrderStatusPartiallyDelivered,
@@ -140,7 +140,7 @@ func CustomerAppOrderHistory(c *gin.Context) {
 		}).
 		Preload("Items.Product").
 		Preload("Outlet").
-		Order("created_at DESC").
+		Order("\"createdAt\" DESC").
 		Find(&orders).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
@@ -159,7 +159,7 @@ func CustomerAppOrderHistory(c *gin.Context) {
 	for i, order := range orders {
 		items := make([]gin.H, len(order.Items))
 		for j, item := range order.Items {
-// Helper to get signed URL
+			// Helper to get signed URL
 			var imageURL *string
 			if item.Product.ImageURL != nil {
 				signedURL, _ := services.GetSignedURL(*item.Product.ImageURL)
@@ -167,11 +167,11 @@ func CustomerAppOrderHistory(c *gin.Context) {
 			}
 
 			items[j] = gin.H{
-				"id":         item.ID,
-				"productId":  item.ProductID,
-				"quantity":   item.Quantity,
-				"unitPrice":  item.UnitPrice,
-				"status":     item.Status,
+				"id":        item.ID,
+				"productId": item.ProductID,
+				"quantity":  item.Quantity,
+				"unitPrice": item.UnitPrice,
+				"status":    item.Status,
 				"product": gin.H{
 					"id":          item.Product.ID,
 					"name":        item.Product.Name,
@@ -231,7 +231,7 @@ func CustomerAppCancelOrder(c *gin.Context) {
 
 	// Get customer
 	var customer models.CustomerDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&customer).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&customer).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Customer not found"})
 		return
 	}
@@ -239,7 +239,7 @@ func CustomerAppCancelOrder(c *gin.Context) {
 	// Fetch order
 	var order models.Order
 	if err := database.DB.
-		Where("id = ? AND customer_id = ?", orderID, customer.ID).
+		Where("id = ? AND \"customerId\" = ?", orderID, customer.ID).
 		First(&order).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Order not found"})
 		return
@@ -263,7 +263,7 @@ func CustomerAppCancelOrder(c *gin.Context) {
 		// Refund if paid via wallet
 		if order.PaymentMethod == "WALLET" {
 			var wallet models.Wallet
-			if err := tx.Where("customer_id = ?", customer.ID).First(&wallet).Error; err != nil {
+			if err := tx.Where("\"customerId\" = ?", customer.ID).First(&wallet).Error; err != nil {
 				return err
 			}
 
@@ -288,14 +288,14 @@ func CustomerAppCancelOrder(c *gin.Context) {
 
 		// Restore inventory
 		var orderItems []models.OrderItem
-		if err := tx.Where("order_id = ?", order.ID).Find(&orderItems).Error; err != nil {
+		if err := tx.Where("\"orderId\" = ?", order.ID).Find(&orderItems).Error; err != nil {
 			return err
 		}
 
 		for _, item := range orderItems {
 			// Find inventory
 			var inventory models.Inventory
-			if err := tx.Where("product_id = ? AND outlet_id = ?", item.ProductID, order.OutletID).First(&inventory).Error; err == nil {
+			if err := tx.Where("\"productId\" = ? AND \"outletId\" = ?", item.ProductID, order.OutletID).First(&inventory).Error; err == nil {
 				// Add stock back
 				inventory.Quantity += item.Quantity
 				if err := tx.Save(&inventory).Error; err != nil {

@@ -35,7 +35,7 @@ func GetProductsAndStocks(c *gin.Context) {
 
 	// Fetch all products for the outlet
 	var products []models.Product
-	if err := database.DB.Where("outlet_id = ?", outletID).Find(&products).Error; err != nil {
+	if err := database.DB.Where("\"outletId\" = ?", outletID).Find(&products).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
 	}
@@ -49,7 +49,7 @@ func GetProductsAndStocks(c *gin.Context) {
 	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
 
 	var quota models.UserFreeQuota
-	err := database.DB.Where("user_id = ? AND consumption_date = ?", userID, today).First(&quota).Error
+	err := database.DB.Where("\"userId\" = ? AND \"consumptionDate\" = ?", userID, today).First(&quota).Error
 	if err == nil {
 		// Quota record exists, calculate remaining
 		remainingQuota = 5 - quota.QuantityUsed
@@ -64,7 +64,7 @@ func GetProductsAndStocks(c *gin.Context) {
 	for _, product := range products {
 		// Fetch inventory for this product
 		var inventory models.Inventory
-		inventoryExists := database.DB.Where("product_id = ?", product.ID).First(&inventory).Error == nil
+		inventoryExists := database.DB.Where("\"productId\" = ?", product.ID).First(&inventory).Error == nil
 
 		// Get signed URL for image
 		imageURL := ""
