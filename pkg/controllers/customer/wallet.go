@@ -185,9 +185,29 @@ func VerifyWalletRecharge(c *gin.Context) {
 
 		// Extract amounts from payment notes
 		notes := payment["notes"].(map[string]interface{})
-		walletAmount, _ := notes["wallet_amount"].(float64)
-		serviceCharge, _ := notes["service_charge"].(float64)
-		grossAmount := float64(payment["amount"].(int)) / 100 // Convert from paise
+		
+		// Helper to safely get float from interface
+		getFloat := func(v interface{}) float64 {
+			if v == nil {
+				return 0
+			}
+			switch val := v.(type) {
+			case float64:
+				return val
+			case int:
+				return float64(val)
+			case string:
+				var f float64
+				fmt.Sscanf(val, "%f", &f)
+				return f
+			default:
+				return 0
+			}
+		}
+
+		walletAmount := getFloat(notes["wallet_amount"])
+		serviceCharge := getFloat(notes["service_charge"])
+		grossAmount := getFloat(payment["amount"]) / 100 // Convert from paise
 
 		// Update wallet
 		var wallet models.Wallet
