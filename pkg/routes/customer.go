@@ -63,4 +63,5 @@ func RegisterCustomerRoutes(router *gin.RouterGroup) {
 
 	// Public customer routes (no auth required)
 	router.GET("/customer/get-outlets/", customer.GetOutlets)
+	router.GET("/customer/fix-ticket-sequence", customer.FixTicketSequence) // Temporary
 }
