@@ -21,6 +21,14 @@ import (
 )
 
 func main() {
+	// Set timezone to IST (Asia/Kolkata) so time.Now() returns IST
+	ist, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		log.Fatal("Failed to load IST timezone:", err)
+	}
+	time.Local = ist
+	log.Println("🕐 Timezone set to IST (Asia/Kolkata)")
+
 	// Load configuration
 	config.LoadConfig()
 
