@@ -288,13 +288,13 @@ func GetProfitLossTrends(c *gin.Context) {
 
 	// Get orders
 	var orders []struct {
-		TotalAmount float64
-		CreatedAt   time.Time
+		TotalAmount float64   `gorm:"column:totalAmount"`
+		CreatedAt   time.Time `gorm:"column:createdAt"`
 	}
 	ordersQuery := database.DB.Model(&models.Order{}).
 		Select(`"totalAmount", "createdAt"`).
-		Where(`status IN ? AND "createdAt" >= ? AND "createdAt" <= ?`,
-			[]models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}, yearStart, yearEnd)
+		Where(`status::text IN (?,?) AND "createdAt" >= ? AND "createdAt" <= ?`,
+			models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered, yearStart, yearEnd)
 
 	if !isAll {
 		ordersQuery = ordersQuery.Where(`"outletId" = ?`, outletID)
@@ -303,8 +303,8 @@ func GetProfitLossTrends(c *gin.Context) {
 
 	// Get expenses
 	var expenses []struct {
-		Amount    float64
-		CreatedAt time.Time
+		Amount    float64   `gorm:"column:amount"`
+		CreatedAt time.Time `gorm:"column:createdAt"`
 	}
 	expensesQuery := database.DB.Model(&models.Expense{}).
 		Select(`amount, "createdAt"`).
@@ -415,19 +415,39 @@ func GetCustomerOverview(c *gin.Context) {
 
 	newCount := 0
 	returningCount := 0
+	newRevenue := 0.0
+	returningRevenue := 0.0
+
 	for customerID := range customerIDs {
+		// Determine if new or returning (has prior order)
 		var priorOrder models.Order
 		err := database.DB.Where(`"customerId" = ? AND "createdAt" < ?`, customerID, from).First(&priorOrder).Error
-		if err == nil {
+		isReturning := err == nil
+
+		if isReturning {
 			returningCount++
 		} else {
 			newCount++
 		}
+
+		// Calculate revenue for this customer in the current period from the 'orders' slice
+		// We can filter the 'orders' slice we already fetched
+		for _, order := range orders {
+			if order.CustomerID != nil && *order.CustomerID == customerID {
+				if isReturning {
+					returningRevenue += order.TotalAmount
+				} else {
+					newRevenue += order.TotalAmount
+				}
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"newCustomers":       newCount,
-		"returningCustomers": returningCount,
+		"newCustomers":             newCount,
+		"returningCustomers":       returningCount,
+		"newCustomerRevenue":       newRevenue,
+		"returningCustomerRevenue": returningRevenue,
 	})
 }
 
