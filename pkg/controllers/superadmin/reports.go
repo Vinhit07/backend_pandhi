@@ -3,6 +3,7 @@ package superadmin
 import (
 	"backend_pandhi/pkg/database"
 	"backend_pandhi/pkg/models"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -313,6 +314,14 @@ func GetProfitLossTrends(c *gin.Context) {
 		expensesQuery = expensesQuery.Where(`"outletId" = ?`, outletID)
 	}
 	expensesQuery.Scan(&expenses)
+
+	// DEBUG LOGS
+	fmt.Printf("💰 PROFIT/LOSS DEBUG: OutletID=%d, Year=%d\n", outletID, req.Year)
+	fmt.Printf("🔍 Orders Found: %d\n", len(orders))
+	fmt.Printf("🔍 Expenses Found: %d\n", len(expenses))
+	if len(orders) > 0 {
+		fmt.Printf("📝 Sample Order: Amount=%.2f, Date=%s\n", orders[0].TotalAmount, orders[0].CreatedAt)
+	}
 
 	// Aggregate by month
 	monthly := make(map[int]gin.H)

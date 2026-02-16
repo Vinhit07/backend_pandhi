@@ -149,7 +149,7 @@ func DeductStock(c *gin.Context) {
 // StockHistory returns stock movement history
 func StockHistory(c *gin.Context) {
 	var req struct {
-		OutletID  int    `json:"outletId" binding:"required"`
+		OutletID  int    `json:"outletId"`
 		StartDate string `json:"startDate" binding:"required"`
 		EndDate   string `json:"endDate" binding:"required"`
 	}

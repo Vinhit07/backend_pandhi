@@ -67,15 +67,22 @@ func OutletAddStaff(c *gin.Context) {
 			return err
 		}
 
-		// Create permissions
-		if len(req.Permissions) > 0 {
-			for _, permType := range req.Permissions {
-				perm := models.StaffPermission{
-					StaffID:   staffInfo.ID,
-					Type:      models.PermissionType(permType),
-					IsGranted: true,
-				}
-				tx.Create(&perm)
+		// Create permissions - Grant ALL by default
+		allPermissions := []models.PermissionType{
+			models.PermissionTypeBilling,
+			models.PermissionTypeProductInsights,
+			models.PermissionTypeInventory,
+			models.PermissionTypeReports,
+		}
+
+		for _, permType := range allPermissions {
+			perm := models.StaffPermission{
+				StaffID:   staffInfo.ID,
+				Type:      permType,
+				IsGranted: true,
+			}
+			if err := tx.Create(&perm).Error; err != nil {
+				return err
 			}
 		}
 
