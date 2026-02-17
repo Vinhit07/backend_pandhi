@@ -91,12 +91,12 @@ func SendOTPEmail(email, code string) error {
 	smtpHost := "smtp.gmail.com"
 	smtpPort := "587"
 
-	subject := "Your Quick Byte Login OTP"
+	subject := "Your Pandhi Login OTP"
 	body := fmt.Sprintf(`
 		<html>
 		<body style="font-family: Arial, sans-serif; padding: 20px; background: #1a1a2e; color: #ffffff;">
 			<div style="max-width: 400px; margin: 0 auto; background: #16213e; border-radius: 16px; padding: 32px; text-align: center;">
-				<h2 style="color: #FF6B35; margin-bottom: 8px;">Quick Byte</h2>
+				<h2 style="color: #FF6B35; margin-bottom: 8px;">Pandhi</h2>
 				<p style="color: #a0a0b0; margin-bottom: 24px;">Your one-time login code</p>
 				<div style="background: #0f3460; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
 					<span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #FF6B35;">%s</span>
@@ -108,7 +108,7 @@ func SendOTPEmail(email, code string) error {
 		</html>
 	`, code)
 
-	message := fmt.Sprintf("From: Quick Byte <%s>\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
+	message := fmt.Sprintf("From: Pandhi <%s>\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
 		smtpEmail, email, subject, body)
 
 	auth := smtp.PlainAuth("", smtpEmail, smtpPassword, smtpHost)

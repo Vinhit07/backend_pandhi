@@ -437,7 +437,20 @@ func CustomerAppOrder(c *gin.Context) {
 
 		// ===CREATE ORDER===
 		deliveryDate := time.Now()
-		deliveryDate = time.Date(deliveryDate.Year(), deliveryDate.Month(), deliveryDate.Day(), 0, 0, 0, 0, deliveryDate.Location())
+		isPreOrder := false
+
+		if req.RequestedDeliveryDate != nil && *req.RequestedDeliveryDate != "" {
+			if parsed, err := time.Parse("2006-01-02", *req.RequestedDeliveryDate); err == nil {
+				deliveryDate = parsed
+				today := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.Now().Location())
+				if deliveryDate.After(today) {
+					isPreOrder = true
+				}
+			}
+		} else {
+			deliveryDate = time.Date(deliveryDate.Year(), deliveryDate.Month(), deliveryDate.Day(), 0, 0, 0, 0, deliveryDate.Location())
+		}
+
 		deliverySlot := models.DeliverySlot(req.DeliverySlot)
 
 		order := models.Order{
@@ -449,7 +462,7 @@ func CustomerAppOrder(c *gin.Context) {
 			Type:          models.OrderTypeApp,
 			DeliveryDate:  &deliveryDate,
 			DeliverySlot:  &deliverySlot,
-			IsPreOrder:    false,
+			IsPreOrder:    isPreOrder,
 		}
 
 		if razorpayPaymentID != nil {

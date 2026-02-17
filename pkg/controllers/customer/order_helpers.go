@@ -91,6 +91,7 @@ func CustomerAppOngoingOrderList(c *gin.Context) {
 			"status":        order.Status,
 			"deliveryDate":  order.DeliveryDate,
 			"deliverySlot":  order.DeliverySlot,
+			"isPreOrder":    order.IsPreOrder,
 			"createdAt":     order.CreatedAt,
 			"items":         items,
 			"outlet": gin.H{
@@ -190,6 +191,7 @@ func CustomerAppOrderHistory(c *gin.Context) {
 			"status":        order.Status,
 			"deliveryDate":  order.DeliveryDate,
 			"deliverySlot":  order.DeliverySlot,
+			"isPreOrder":    order.IsPreOrder,
 			"deliveredAt":   order.DeliveredAt,
 			"createdAt":     order.CreatedAt,
 			"items":         items,
