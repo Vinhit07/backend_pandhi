@@ -59,7 +59,12 @@ func CustomerAppOngoingOrderList(c *gin.Context) {
 	formattedOrders := make([]gin.H, len(orders))
 	for i, order := range orders {
 		items := make([]gin.H, len(order.Items))
+		tokenQty := 0
 		for j, item := range order.Items {
+			if item.Product.CompanyPaid && item.Product.Category == models.CategoryBeverages {
+				tokenQty += item.Quantity
+			}
+
 			// Helper to get signed URL
 			var imageURL *string
 			if item.Product.ImageURL != nil {
@@ -93,6 +98,8 @@ func CustomerAppOngoingOrderList(c *gin.Context) {
 			"deliverySlot":  order.DeliverySlot,
 			"isPreOrder":    order.IsPreOrder,
 			"createdAt":     order.CreatedAt,
+			"token":         order.Token,
+			"tokenQty":      tokenQty,
 			"items":         items,
 			"outlet": gin.H{
 				"id":      order.Outlet.ID,
@@ -159,7 +166,12 @@ func CustomerAppOrderHistory(c *gin.Context) {
 	formattedOrders := make([]gin.H, len(orders))
 	for i, order := range orders {
 		items := make([]gin.H, len(order.Items))
+		tokenQty := 0
 		for j, item := range order.Items {
+			if item.Product.CompanyPaid && item.Product.Category == models.CategoryBeverages {
+				tokenQty += item.Quantity
+			}
+
 			// Helper to get signed URL
 			var imageURL *string
 			if item.Product.ImageURL != nil {
@@ -194,6 +206,8 @@ func CustomerAppOrderHistory(c *gin.Context) {
 			"isPreOrder":    order.IsPreOrder,
 			"deliveredAt":   order.DeliveredAt,
 			"createdAt":     order.CreatedAt,
+			"token":         order.Token,
+			"tokenQty":      tokenQty,
 			"items":         items,
 			"outlet": gin.H{
 				"id":      order.Outlet.ID,

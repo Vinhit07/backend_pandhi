@@ -64,6 +64,7 @@ func CustomerAppOrder(c *gin.Context) {
 		CouponDiscount    float64
 		RazorpayPaymentID *string
 		PricingBreakdown  gin.H
+		BeverageTokenQty  int
 	}
 
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
@@ -124,6 +125,7 @@ func CustomerAppOrder(c *gin.Context) {
 
 		var companyPaidItems []ItemWithProduct
 		var regularItems []ItemWithProduct
+		var companyPaidBeverageQty int
 
 		for _, item := range req.Items {
 			product := productMap[item.ProductID]
@@ -136,6 +138,9 @@ func CustomerAppOrder(c *gin.Context) {
 
 			if product.CompanyPaid {
 				companyPaidItems = append(companyPaidItems, iwp)
+				if product.Category == models.CategoryBeverages {
+					companyPaidBeverageQty += item.Quantity
+				}
 			} else {
 				regularItems = append(regularItems, iwp)
 			}
@@ -453,6 +458,19 @@ func CustomerAppOrder(c *gin.Context) {
 
 		deliverySlot := models.DeliverySlot(req.DeliverySlot)
 
+		// Calculate cumulative token for company-paid beverages safely against concurrent access
+		var token *int
+		if companyPaidBeverageQty > 0 {
+			tx.Exec("LOCK TABLE \"Order\" IN EXCLUSIVE MODE")
+			var maxToken int
+			if err := tx.Model(&models.Order{}).Select("COALESCE(MAX(token), 0)").Scan(&maxToken).Error; err != nil {
+				return err
+			}
+			nextToken := maxToken + companyPaidBeverageQty
+			token = &nextToken
+		}
+		result.BeverageTokenQty = companyPaidBeverageQty
+
 		order := models.Order{
 			CustomerID:    &customer.ID,
 			OutletID:      req.OutletID,
@@ -463,6 +481,7 @@ func CustomerAppOrder(c *gin.Context) {
 			DeliveryDate:  &deliveryDate,
 			DeliverySlot:  &deliverySlot,
 			IsPreOrder:    isPreOrder,
+			Token:         token,
 		}
 
 		if razorpayPaymentID != nil {
@@ -548,6 +567,8 @@ func CustomerAppOrder(c *gin.Context) {
 			"deliverySlot":      result.Order.DeliverySlot,
 			"deliveryDate":      result.Order.DeliveryDate,
 			"createdAt":         result.Order.CreatedAt,
+			"token":             result.Order.Token,
+			"tokenQty":          result.BeverageTokenQty,
 			"items":             items,
 			"razorpayPaymentId": result.RazorpayPaymentID,
 		},

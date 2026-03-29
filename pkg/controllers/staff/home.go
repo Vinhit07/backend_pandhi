@@ -280,6 +280,7 @@ func RecentOrders(c *gin.Context) {
 			"createdAt":    order.CreatedAt,
 			"deliveryDate": order.DeliveryDate,
 			"deliverySlot": order.DeliverySlot,
+			"token":        order.Token,
 		}
 	}
 
@@ -373,6 +374,7 @@ func GetOrder(c *gin.Context) {
 			"orderStatus":  order.Status,
 			"totalPrice":   order.TotalAmount,
 			"createdAt":    order.CreatedAt,
+			"token":        order.Token,
 			"items":        items,
 		},
 	})
