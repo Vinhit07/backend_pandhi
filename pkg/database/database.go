@@ -93,6 +93,7 @@ func AutoMigrate() error {
 		&models.CustomerDetails{},
 		&models.StaffDetails{},
 		&models.StaffPermission{},
+		&models.Badge{},
 
 		// Product & Inventory
 		&models.Product{},
@@ -146,7 +147,46 @@ func AutoMigrate() error {
 	// Create indexes matching Prisma schema
 	createIndexes()
 
+	// Create Postgres functions
+	createPostgresFunctions()
+
 	return nil
+}
+
+// createPostgresFunctions creates any raw SQL functions needed
+func createPostgresFunctions() {
+	log.Println("🔄 Creating PostgreSQL functions...")
+
+	functionSQL := `
+	CREATE OR REPLACE FUNCTION verify_badge_access(p_badge_id text)
+	RETURNS json AS $$
+	DECLARE
+		v_email text;
+		v_is_claimed boolean;
+		v_name text;
+	BEGIN
+		SELECT email, is_claimed, name INTO v_email, v_is_claimed, v_name
+		FROM badges
+		WHERE badge_id = p_badge_id;
+
+		IF NOT FOUND THEN
+			RETURN json_build_object('success', false, 'message', 'Badge not found');
+		END IF;
+
+		IF v_is_claimed THEN
+			RETURN json_build_object('success', false, 'message', 'Badge previously claimed');
+		END IF;
+
+		RETURN json_build_object('success', true, 'email', v_email, 'name', v_name);
+	END;
+	$$ LANGUAGE plpgsql;
+	`
+
+	if err := DB.Exec(functionSQL).Error; err != nil {
+		log.Printf("❌ Failed to create verify_badge_access function: %v", err)
+	} else {
+		log.Println("✅ verify_badge_access function created or updated")
+	}
 }
 
 // createIndexes creates additional indexes to match Prisma schema

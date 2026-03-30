@@ -49,6 +49,7 @@ type User struct {
 	GoogleID   *string   `gorm:"unique;column:googleId" json:"googleId"`
 	IsVerified bool      `gorm:"default:false;column:isVerified" json:"isVerified"`
 	ImageURL   *string   `gorm:"column:imageUrl" json:"imageUrl"`
+	BadgeID    *string   `gorm:"unique;column:badge_id" json:"badgeId,omitempty"`
 
 	// Relationships
 	CustomerInfo           *CustomerDetails       `gorm:"foreignKey:UserID" json:"customerInfo,omitempty"`
@@ -228,4 +229,18 @@ type StockHistory struct {
 // TableName specifies the table name for StockHistory model
 func (StockHistory) TableName() string {
 	return "StockHistory"
+}
+
+// Badge model represents the prestored badges matching the user's manual DB schema
+type Badge struct {
+	ID        string    `gorm:"primaryKey;column:id" json:"id"` // This is the 12-digit string
+	Email     string    `gorm:"unique;not null;column:email" json:"email"`
+	Phone     *string   `gorm:"column:phone" json:"phone"`
+	IsClaimed bool      `gorm:"default:false;column:is_claimed" json:"isClaimed"`
+	CreatedAt time.Time `gorm:"autoCreateTime;column:created_at" json:"createdAt"`
+}
+
+// TableName specifies the table name for Badge model
+func (Badge) TableName() string {
+	return "badges"
 }

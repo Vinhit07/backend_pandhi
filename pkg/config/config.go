@@ -44,6 +44,10 @@ type Config struct {
 	GCPBucketName                string
 	GoogleApplicationCredentials string
 
+	// Supabase API
+	SupabaseURL        string
+	SupabaseServiceKey string
+
 	// Mobile Auth
 	EnableMobileTokenReturn string
 
@@ -81,6 +85,8 @@ func LoadConfig() {
 		GCPProjectID:                 getEnv("GCP_PROJECT_ID", ""),
 		GCPBucketName:                getEnv("GCP_BUCKET_NAME", ""),
 		GoogleApplicationCredentials: getEnv("GOOGLE_APPLICATION_CREDENTIALS", ""),
+		SupabaseURL:                  getEnv("SUPABASE_URL", ""),
+		SupabaseServiceKey:           getEnv("SUPABASE_SERVICE_ROLE_KEY", ""),
 		EnableMobileTokenReturn:      getEnv("ENABLE_MOBILE_TOKEN_RETURN", "false"),
 		EC2PublicIP:                  getEnv("EC2_PUBLIC_IP", ""),
 		AllowedOrigins:               getEnv("ALLOWED_ORIGINS", ""),

@@ -39,8 +39,6 @@ func main() {
 	}
 	defer database.CloseDatabase()
 
-	// Run migrations (optional - comment out in production if using manual migrations)
-	// DISABLED: Database schema is managed by Prisma
 	// if config.IsDevelopment() {
 	// 	if err := database.AutoMigrate(); err != nil {
 	// 		log.Printf("⚠️ Failed to run migrations: %v", err)
