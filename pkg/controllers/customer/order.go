@@ -298,6 +298,12 @@ func CustomerAppOrder(c *gin.Context) {
 			result.CouponDiscount = couponDiscount
 		}
 
+		// ===AMOUNT MATCH VALIDATION===
+		// Prevents backend from silently overcharging the wallet if frontend's quota was out of sync.
+		if math.Abs(finalTotalAmount-req.TotalAmount) > 0.01 {
+			return fmt.Errorf("Amount mismatch: Your app attempted to pay ₹%.2f, but due to your daily free quota consumption, the actual amount is ₹%.2f. Please refresh your cart", req.TotalAmount, finalTotalAmount)
+		}
+
 		// ===PAYMENT VERIFICATION===
 		var razorpayPaymentID *string
 		if (req.PaymentMethod == "UPI" || req.PaymentMethod == "CARD") && req.PaymentDetails != nil {
@@ -463,7 +469,15 @@ func CustomerAppOrder(c *gin.Context) {
 		if companyPaidBeverageQty > 0 {
 			tx.Exec("LOCK TABLE \"Order\" IN EXCLUSIVE MODE")
 			var maxToken int
-			if err := tx.Model(&models.Order{}).Select("COALESCE(MAX(token), 0)").Scan(&maxToken).Error; err != nil {
+			
+			// Scope MAX(token) to TODAY only (local timezone boundary, which is IST)
+			now := time.Now()
+			todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			tomorrowStart := todayStart.AddDate(0, 0, 1)
+
+			if err := tx.Model(&models.Order{}).
+				Where("\"createdAt\" >= ? AND \"createdAt\" < ?", todayStart, tomorrowStart).
+				Select("COALESCE(MAX(token), 0)").Scan(&maxToken).Error; err != nil {
 				return err
 			}
 			nextToken := maxToken + companyPaidBeverageQty

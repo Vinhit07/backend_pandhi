@@ -127,7 +127,7 @@ func GetCurrentQuota(c *gin.Context) {
 
 	// Check if quota record exists for today
 	var quota models.UserFreeQuota
-	err := database.DB.Where("user_id = ? AND consumption_date = ?", user.ID, today).First(&quota).Error
+	err := database.DB.Where("\"userId\" = ? AND \"consumptionDate\" = ?", user.ID, today).First(&quota).Error
 
 	remainingQuota := 5 // Default quota
 	quantityUsed := 0
