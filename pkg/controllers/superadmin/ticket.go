@@ -13,17 +13,23 @@ import (
 // GetTickets returns all tickets for an outlet with customer details
 func GetTickets(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, err := strconv.Atoi(outletIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "Provide valid OutletId"})
-		return
+	var outletID int
+	var err error
+
+	query := database.DB.Where("role = ?", models.RoleCustomer).Preload("CustomerInfo.Tickets")
+
+	if outletIDStr != "ALL" {
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Provide valid OutletId"})
+			return
+		}
+		query = query.Where(`"outletId" = ?`, outletID)
 	}
 
 	// Get customers with tickets
 	var users []models.User
-	database.DB.Where(`"outletId" = ? AND role = ?`, outletID, models.RoleCustomer).
-		Preload("CustomerInfo.Tickets").
-		Find(&users)
+	query.Find(&users)
 
 	// Flatten tickets
 	allTickets := []gin.H{}
@@ -45,7 +51,7 @@ func GetTickets(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"tickets": allTickets})
+	c.JSON(http.StatusOK, gin.H{"data": allTickets})
 }
 
 // TicketClose closes a ticket with resolution note

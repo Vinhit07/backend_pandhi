@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-//OutletCurrentOrder returns current orders for notification purposes
+// OutletCurrentOrder returns current orders for notification purposes
 func OutletCurrentOrder(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
 	outletID, err := strconv.Atoi(outletIDStr)
@@ -21,13 +21,13 @@ func OutletCurrentOrder(c *gin.Context) {
 	// Fetch pending/in-progress orders
 	var orders []models.Order
 	database.DB.
-		Where("outlet_id = ? AND status IN ?", outletID, []models.OrderStatus{
+		Where("\"outletId\" = ? AND status IN ?", outletID, []models.OrderStatus{
 			models.OrderStatusPending,
 			models.OrderStatusPartiallyDelivered,
 		}).
 		Preload("Customer.User").
 		Preload("Items.Product").
-		Order("created_at DESC").
+		Order("\"createdAt\" DESC").
 		Find(&orders)
 
 	formattedOrders := make([]gin.H, len(orders))

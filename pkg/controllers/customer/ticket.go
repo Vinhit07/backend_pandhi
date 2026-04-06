@@ -12,6 +12,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+
+
+// Temporary helper to reset sequence
+func FixTicketSequence(c *gin.Context) {
+	// Execute raw SQL to reset sequence
+	if err := database.DB.Exec(`SELECT setval(pg_get_serial_sequence('"Ticket"', 'id'), COALESCE(MAX(id)+1, 1), false) FROM "Ticket"`).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Ticket sequence reset successfully"})
+}
+
 // CreateTicket creates a new support ticket
 func CreateTicket(c *gin.Context) {
 	var req struct {
@@ -118,8 +130,8 @@ func GetCustomerTickets(c *gin.Context) {
 	// Fetch tickets
 	var tickets []models.Ticket
 	if err := database.DB.
-		Where("customer_id = ?", userWithCustomer.CustomerInfo.ID).
-		Order("created_at DESC").
+		Where("\"customerId\" = ?", userWithCustomer.CustomerInfo.ID).
+		Order("\"createdAt\" DESC").
 		Preload("Customer.User").
 		Find(&tickets).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
@@ -227,7 +239,7 @@ func GetTicketDetails(c *gin.Context) {
 	// Fetch ticket
 	var ticket models.Ticket
 	if err := database.DB.
-		Where("id = ? AND customer_id = ?", ticketID, userWithCustomer.CustomerInfo.ID).
+		Where("id = ? AND \"customerId\" = ?", ticketID, userWithCustomer.CustomerInfo.ID).
 		Preload("Customer.User").
 		First(&ticket).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Ticket not found"})

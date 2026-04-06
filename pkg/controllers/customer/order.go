@@ -18,13 +18,13 @@ import (
 // CustomerAppOrder creates a new customer order with quota segregation, inventory, coupons, and payment
 func CustomerAppOrder(c *gin.Context) {
 	var req struct {
-		TotalAmount             float64 `json:"totalAmount"`
-		PaymentMethod           string  `json:"paymentMethod" binding:"required"`
-		DeliverySlot            string  `json:"deliverySlot" binding:"required"`
-		OutletID                int     `json:"outletId" binding:"required"`
-		CouponCode              *string `json:"couponCode"`
-		RequestedDeliveryDate   *string `json:"requestedDeliveryDate"`
-		Items                   []struct {
+		TotalAmount           float64 `json:"totalAmount"`
+		PaymentMethod         string  `json:"paymentMethod" binding:"required"`
+		DeliverySlot          string  `json:"deliverySlot" binding:"required"`
+		OutletID              int     `json:"outletId" binding:"required"`
+		CouponCode            *string `json:"couponCode"`
+		RequestedDeliveryDate *string `json:"requestedDeliveryDate"`
+		Items                 []struct {
 			ProductID int     `json:"productId" binding:"required"`
 			Quantity  int     `json:"quantity" binding:"required"`
 			UnitPrice float64 `json:"unitPrice" binding:"required"`
@@ -58,12 +58,13 @@ func CustomerAppOrder(c *gin.Context) {
 
 	// Perform transaction
 	var result struct {
-		Order              models.Order
-		WalletTransaction  *models.WalletTransaction
-		StockUpdates       []gin.H
-		CouponDiscount     float64
-		RazorpayPaymentID  *string
-		PricingBreakdown   gin.H
+		Order             models.Order
+		WalletTransaction *models.WalletTransaction
+		StockUpdates      []gin.H
+		CouponDiscount    float64
+		RazorpayPaymentID *string
+		PricingBreakdown  gin.H
+		BeverageTokenQty  int
 	}
 
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
@@ -96,7 +97,7 @@ func CustomerAppOrder(c *gin.Context) {
 
 		// Validate customer
 		var customer models.CustomerDetails
-		if err := tx.Where("user_id = ?", user.ID).First(&customer).Error; err != nil {
+		if err := tx.Where("\"userId\" = ?", user.ID).First(&customer).Error; err != nil {
 			return fmt.Errorf("Customer not found")
 		}
 
@@ -124,6 +125,7 @@ func CustomerAppOrder(c *gin.Context) {
 
 		var companyPaidItems []ItemWithProduct
 		var regularItems []ItemWithProduct
+		var companyPaidBeverageQty int
 
 		for _, item := range req.Items {
 			product := productMap[item.ProductID]
@@ -136,6 +138,9 @@ func CustomerAppOrder(c *gin.Context) {
 
 			if product.CompanyPaid {
 				companyPaidItems = append(companyPaidItems, iwp)
+				if product.Category == models.CategoryBeverages {
+					companyPaidBeverageQty += item.Quantity
+				}
 			} else {
 				regularItems = append(regularItems, iwp)
 			}
@@ -161,7 +166,7 @@ func CustomerAppOrder(c *gin.Context) {
 			today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
 
 			var currentQuota models.UserFreeQuota
-			tx.Where("user_id = ? AND consumption_date = ?", user.ID, today).First(&currentQuota)
+			tx.Where("\"userId\" = ? AND \"consumptionDate\" = ?", user.ID, today).First(&currentQuota)
 
 			used := currentQuota.QuantityUsed
 			remainingFreeQuota := int(math.Max(0, 5-float64(used)))
@@ -198,16 +203,16 @@ func CustomerAppOrder(c *gin.Context) {
 			// Update quota
 			if freeItemsCount > 0 {
 				var quota models.UserFreeQuota
-				err := tx.Where("user_id = ? AND consumption_date = ?", user.ID, today).First(&quota).Error
+				err := tx.Where("\"userId\" = ? AND \"consumptionDate\" = ?", user.ID, today).First(&quota).Error
 				if err == gorm.ErrRecordNotFound {
 					quota = models.UserFreeQuota{
-						UserID:           user.ID,
-						ConsumptionDate:  today,
-						QuantityUsed:     freeItemsCount,
+						UserID:          user.ID,
+						ConsumptionDate: today,
+						QuantityUsed:    freeItemsCount,
 					}
 					tx.Create(&quota)
 				} else {
-					tx.Model(&quota).Update("quantity_used", quota.QuantityUsed+freeItemsCount)
+					tx.Model(&quota).Update("\"quantityUsed\"", quota.QuantityUsed+freeItemsCount)
 				}
 			}
 		}
@@ -263,7 +268,7 @@ func CustomerAppOrder(c *gin.Context) {
 
 			// Check existing usage
 			var existingUsage models.CouponUsage
-			if tx.Where("user_id = ? AND coupon_id = ?", user.ID, c.ID).First(&existingUsage).Error == nil {
+			if tx.Where("\"userId\" = ? AND \"couponId\" = ?", user.ID, c.ID).First(&existingUsage).Error == nil {
 				return fmt.Errorf("Coupon already used by this customer")
 			}
 
@@ -293,6 +298,12 @@ func CustomerAppOrder(c *gin.Context) {
 			result.CouponDiscount = couponDiscount
 		}
 
+		// ===AMOUNT MATCH VALIDATION===
+		// Prevents backend from silently overcharging the wallet if frontend's quota was out of sync.
+		if math.Abs(finalTotalAmount-req.TotalAmount) > 0.01 {
+			return fmt.Errorf("Amount mismatch: Your app attempted to pay ₹%.2f, but due to your daily free quota consumption, the actual amount is ₹%.2f. Please refresh your cart", req.TotalAmount, finalTotalAmount)
+		}
+
 		// ===PAYMENT VERIFICATION===
 		var razorpayPaymentID *string
 		if (req.PaymentMethod == "UPI" || req.PaymentMethod == "CARD") && req.PaymentDetails != nil {
@@ -308,41 +319,41 @@ func CustomerAppOrder(c *gin.Context) {
 
 			// Fetch payment details
 			// Fetch payment details
-			// Assuming payment is successful if signature validates, as FetchPaymentDetails might not be needed for validation if signature is valid. 
-			// However, to check amount and status, we need to fetch. 
-			// Using Razorpay client directly or if we have a helper. The new helper file provided CreateRazorpayOrder and Verify. 
+			// Assuming payment is successful if signature validates, as FetchPaymentDetails might not be needed for validation if signature is valid.
+			// However, to check amount and status, we need to fetch.
+			// Using Razorpay client directly or if we have a helper. The new helper file provided CreateRazorpayOrder and Verify.
 			// It does not seem to export FetchPaymentDetails.
 			// But wait, the `services/razorpay.go` file created in previous steps *only* had Create and Verify.
 			// It did *not* have FetchPaymentDetails.
 			// The original code used `razorpayOrderService.FetchPaymentDetails`.
 			// I need to check if I need to add FetchPaymentDetails to services/razorpay.go or if I can verify another way.
 			// VerifyPaymentSignature is sufficient for security.
-			// Amount check: The signature verification confirms the orderID and paymentID are valid. 
+			// Amount check: The signature verification confirms the orderID and paymentID are valid.
 			// But to be 100% sure about the amount paid, we usually trust the signature if the order was created with that amount.
 			// However, checking captured status is good.
-			// Let's assume for now verification is enough or I will simply skip the fetch part if it's not available, 
+			// Let's assume for now verification is enough or I will simply skip the fetch part if it's not available,
 			// OR I should have added FetchPaymentDetails to the simple service.
 			// Looking at `services/razorpay.go` (Step 756), I only added Create and Verify.
-			// Use Verify signature as primary check. 
+			// Use Verify signature as primary check.
 
 			// For this migration, if FetchPaymentDetails is missing, we rely on signature verification.
 			// If verification passed, we assume success. Matches standard flow.
-			
+
 			// If we really need amount check (to prevent tempering), we'd need Fetch.
 			// But `CreateRazorpayOrder` sets the amount.
-			
+
 			// Let's rely on VerifyPaymentSignature.
-            // AND check if I can remove the status/amount check block or if I need to mock it.
-            // Since existing code expects "status" and "amount", I'll just skip those checks if I can't fetch. 
-            // Better: update OrderHelper to just trust Verify for now or rely on the fact that if signature matches, 
-            // the payment corresponds to the order ID we created with the specific amount.
-            
-            // So:
+			// AND check if I can remove the status/amount check block or if I need to mock it.
+			// Since existing code expects "status" and "amount", I'll just skip those checks if I can't fetch.
+			// Better: update OrderHelper to just trust Verify for now or rely on the fact that if signature matches,
+			// the payment corresponds to the order ID we created with the specific amount.
+
+			// So:
 			// 1. Verify Signature (Done above)
 			// 2. Trust it.
 
-            // Removing the FetchPaymentDetails block.
-            
+			// Removing the FetchPaymentDetails block.
+
 			// status, _ := payment["status"].(string)
 			// if status != "captured" && status != "authorized" {
 			// 	return fmt.Errorf("Payment not successful")
@@ -352,8 +363,8 @@ func CustomerAppOrder(c *gin.Context) {
 			// if math.Abs(paidAmount-finalTotalAmount) > 0.01 {
 			// 	return fmt.Errorf("Payment amount mismatch. Expected: ₹%.2f, Paid: ₹%.2f", finalTotalAmount, paidAmount)
 			// }
-            
-             // Proceed with IDs.
+
+			// Proceed with IDs.
 			id := req.PaymentDetails.RazorpayPaymentID
 			razorpayPaymentID = &id
 			result.RazorpayPaymentID = &id
@@ -365,7 +376,7 @@ func CustomerAppOrder(c *gin.Context) {
 
 		for _, item := range req.Items {
 			var inventory models.Inventory
-			if err := tx.Where("product_id = ?", item.ProductID).First(&inventory).Error; err != nil {
+			if err := tx.Where("\"productId\" = ?", item.ProductID).First(&inventory).Error; err != nil {
 				stockValidationErrors = append(stockValidationErrors, fmt.Sprintf("Product %d not found in inventory", item.ProductID))
 				continue
 			}
@@ -377,10 +388,10 @@ func CustomerAppOrder(c *gin.Context) {
 			}
 
 			inventoryUpdates = append(inventoryUpdates, gin.H{
-				"productId":        item.ProductID,
-				"currentStock":     inventory.Quantity,
+				"productId":         item.ProductID,
+				"currentStock":      inventory.Quantity,
 				"requestedQuantity": item.Quantity,
-				"newStock":         inventory.Quantity - item.Quantity,
+				"newStock":          inventory.Quantity - item.Quantity,
 			})
 		}
 
@@ -394,7 +405,7 @@ func CustomerAppOrder(c *gin.Context) {
 			newStock := update["newStock"].(int)
 			requestedQuantity := update["requestedQuantity"].(int)
 
-			tx.Model(&models.Inventory{}).Where("product_id = ?", productID).Update("quantity", newStock)
+			tx.Model(&models.Inventory{}).Where("\"productId\" = ?", productID).Update("quantity", newStock)
 
 			tx.Create(&models.StockHistory{
 				ProductID: productID,
@@ -409,7 +420,7 @@ func CustomerAppOrder(c *gin.Context) {
 		// ===WALLET PAYMENT===
 		if req.PaymentMethod == "WALLET" {
 			var wallet models.Wallet
-			if err := tx.Where("customer_id = ?", customer.ID).First(&wallet).Error; err != nil {
+			if err := tx.Where("\"customerId\" = ?", customer.ID).First(&wallet).Error; err != nil {
 				return fmt.Errorf("Wallet not found")
 			}
 
@@ -419,16 +430,17 @@ func CustomerAppOrder(c *gin.Context) {
 
 			now := time.Now()
 			tx.Model(&wallet).Updates(map[string]interface{}{
-				"balance":    wallet.Balance - finalTotalAmount,
-				"total_used": wallet.TotalUsed + finalTotalAmount,
-				"last_order": &now,
+				"balance":       wallet.Balance - finalTotalAmount,
+				"\"totalUsed\"": wallet.TotalUsed + finalTotalAmount,
+				"\"lastOrder\"": &now,
 			})
 
 			wt := models.WalletTransaction{
-				WalletID: wallet.ID,
-				Amount:   -finalTotalAmount,
-				Method:   models.PaymentMethodWallet,
-				Status:   models.WalletTransTypeDeduct,
+				WalletID:    wallet.ID,
+				Amount:      -finalTotalAmount,
+				Method:      models.PaymentMethodWallet,
+				Status:      models.WalletTransTypeDeduct,
+				Description: "Order Payment",
 			}
 			tx.Create(&wt)
 			result.WalletTransaction = &wt
@@ -436,8 +448,42 @@ func CustomerAppOrder(c *gin.Context) {
 
 		// ===CREATE ORDER===
 		deliveryDate := time.Now()
-		deliveryDate = time.Date(deliveryDate.Year(), deliveryDate.Month(), deliveryDate.Day(), 0, 0, 0, 0, deliveryDate.Location())
+		isPreOrder := false
+
+		if req.RequestedDeliveryDate != nil && *req.RequestedDeliveryDate != "" {
+			if parsed, err := time.Parse("2006-01-02", *req.RequestedDeliveryDate); err == nil {
+				deliveryDate = parsed
+				today := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.Now().Location())
+				if deliveryDate.After(today) {
+					isPreOrder = true
+				}
+			}
+		} else {
+			deliveryDate = time.Date(deliveryDate.Year(), deliveryDate.Month(), deliveryDate.Day(), 0, 0, 0, 0, deliveryDate.Location())
+		}
+
 		deliverySlot := models.DeliverySlot(req.DeliverySlot)
+
+		// Calculate cumulative token for company-paid beverages safely against concurrent access
+		var token *int
+		if companyPaidBeverageQty > 0 {
+			tx.Exec("LOCK TABLE \"Order\" IN EXCLUSIVE MODE")
+			var maxToken int
+			
+			// Scope MAX(token) to TODAY only (local timezone boundary, which is IST)
+			now := time.Now()
+			todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			tomorrowStart := todayStart.AddDate(0, 0, 1)
+
+			if err := tx.Model(&models.Order{}).
+				Where("\"createdAt\" >= ? AND \"createdAt\" < ?", todayStart, tomorrowStart).
+				Select("COALESCE(MAX(token), 0)").Scan(&maxToken).Error; err != nil {
+				return err
+			}
+			nextToken := maxToken + companyPaidBeverageQty
+			token = &nextToken
+		}
+		result.BeverageTokenQty = companyPaidBeverageQty
 
 		order := models.Order{
 			CustomerID:    &customer.ID,
@@ -448,7 +494,8 @@ func CustomerAppOrder(c *gin.Context) {
 			Type:          models.OrderTypeApp,
 			DeliveryDate:  &deliveryDate,
 			DeliverySlot:  &deliverySlot,
-			IsPreOrder:    false,
+			IsPreOrder:    isPreOrder,
+			Token:         token,
 		}
 
 		if razorpayPaymentID != nil {
@@ -471,8 +518,8 @@ func CustomerAppOrder(c *gin.Context) {
 
 		// Clear cart
 		var cart models.Cart
-		if tx.Where("customer_id = ?", customer.ID).First(&cart).Error == nil {
-			tx.Where("cart_id = ?", cart.ID).Delete(&models.CartItem{})
+		if tx.Where("\"customerId\" = ?", customer.ID).First(&cart).Error == nil {
+			tx.Where("\"cartId\" = ?", cart.ID).Delete(&models.CartItem{})
 		}
 
 		// Apply coupon usage
@@ -526,16 +573,18 @@ func CustomerAppOrder(c *gin.Context) {
 	response := gin.H{
 		"message": "Order placed successfully",
 		"order": gin.H{
-			"id":                   result.Order.ID,
-			"orderNumber":          fmt.Sprintf("#ORD-%06d", result.Order.ID),
-			"totalAmount":          result.Order.TotalAmount,
-			"paymentMethod":        result.Order.PaymentMethod,
-			"status":               result.Order.Status,
-			"deliverySlot":         result.Order.DeliverySlot,
-			"deliveryDate":         result.Order.DeliveryDate,
-			"createdAt":            result.Order.CreatedAt,
-			"items":                items,
-			"razorpayPaymentId":    result.RazorpayPaymentID,
+			"id":                result.Order.ID,
+			"orderNumber":       fmt.Sprintf("#ORD-%06d", result.Order.ID),
+			"totalAmount":       result.Order.TotalAmount,
+			"paymentMethod":     result.Order.PaymentMethod,
+			"status":            result.Order.Status,
+			"deliverySlot":      result.Order.DeliverySlot,
+			"deliveryDate":      result.Order.DeliveryDate,
+			"createdAt":         result.Order.CreatedAt,
+			"token":             result.Order.Token,
+			"tokenQty":          result.BeverageTokenQty,
+			"items":             items,
+			"razorpayPaymentId": result.RazorpayPaymentID,
 		},
 		"stockUpdates":     result.StockUpdates,
 		"couponDiscount":   result.CouponDiscount,

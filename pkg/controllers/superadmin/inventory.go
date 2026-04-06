@@ -3,6 +3,7 @@ package superadmin
 import (
 	"backend_pandhi/pkg/database"
 	"backend_pandhi/pkg/models"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,14 +14,27 @@ import (
 // GetStocks returns inventory for an outlet
 func GetStocks(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, err := strconv.Atoi(outletIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "Provide outletId"})
-		return
+	var outletID int
+	var err error
+
+	query := database.DB.Preload("Inventory")
+
+	if outletIDStr != "ALL" {
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Provide outletId"})
+			return
+		}
+		query = query.Where(`"outletId" = ?`, outletID)
+		fmt.Printf("[DEBUG] GetStocks - OutletID: %d\n", outletID)
+	} else {
+		fmt.Printf("[DEBUG] GetStocks - All Outlets\n")
 	}
 
 	var products []models.Product
-	database.DB.Where(`"outletId" = ?`, outletID).Preload("Inventory").Find(&products)
+	query.Find(&products)
+	fmt.Printf("[DEBUG] GetStocks - Found %d products\n", len(products))
+	fmt.Printf("[DEBUG] GetStocks - Found %d products\n", len(products))
 
 	if len(products) == 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "No products found for this outlet."})
@@ -46,7 +60,7 @@ func GetStocks(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"stocks": stockInfo})
+	c.JSON(http.StatusOK, gin.H{"data": stockInfo})
 }
 
 // AddStock adds inventory quantity
@@ -82,6 +96,7 @@ func AddStock(c *gin.Context) {
 
 	// Reload
 	database.DB.First(&inventory, inventory.ID)
+	fmt.Printf("[DEBUG] AddStock - Updated inventory, new quantity: %d\n", inventory.Quantity)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":          "Stock updated successfully",
@@ -134,7 +149,7 @@ func DeductStock(c *gin.Context) {
 // StockHistory returns stock movement history
 func StockHistory(c *gin.Context) {
 	var req struct {
-		OutletID  int    `json:"outletId" binding:"required"`
+		OutletID  int    `json:"outletId"`
 		StartDate string `json:"startDate" binding:"required"`
 		EndDate   string `json:"endDate" binding:"required"`
 	}
@@ -149,14 +164,20 @@ func StockHistory(c *gin.Context) {
 	to = to.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
 
 	var history []models.StockHistory
-	database.DB.Where(`"outletId" = ? AND action IN ? AND timestamp >= ? AND timestamp <= ?`,
-		req.OutletID, []models.StockAction{models.StockActionAdd, models.StockActionRemove}, from, to).
+	query := database.DB.Where(`action IN ? AND timestamp >= ? AND timestamp <= ?`,
+		[]models.StockAction{models.StockActionAdd, models.StockActionRemove}, from, to).
 		Preload("Product").
-		Order("timestamp DESC").
-		Find(&history)
+		Order("timestamp DESC")
+
+	if req.OutletID > 0 {
+		query = query.Where(`"outletId" = ?`, req.OutletID)
+	}
+
+	query.Find(&history)
+	fmt.Printf("[DEBUG] StockHistory - Found %d history records\n", len(history))
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Stock history fetched",
-		"history": history,
+		"data":    history,
 	})
 }

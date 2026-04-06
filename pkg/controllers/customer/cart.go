@@ -25,7 +25,7 @@ func GetCart(c *gin.Context) {
 
 	// Get customer details
 	var customer models.CustomerDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&customer).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&customer).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Customer not found"})
 		return
 	}
@@ -34,7 +34,7 @@ func GetCart(c *gin.Context) {
 	var cart models.Cart
 	err := database.DB.
 		Preload("Items.Product.Inventory").
-		Where("customer_id = ?", customer.ID).
+		Where("\"customerId\" = ?", customer.ID).
 		First(&cart).Error
 
 	if err != nil {
@@ -78,14 +78,14 @@ func UpdateCartItem(c *gin.Context) {
 
 	// Get customer details
 	var customer models.CustomerDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&customer).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&customer).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Customer not found"})
 		return
 	}
 
 	// Get cart
 	var cart models.Cart
-	if err := database.DB.Where("customer_id = ?", customer.ID).First(&cart).Error; err != nil {
+	if err := database.DB.Where("\"customerId\" = ?", customer.ID).First(&cart).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Cart not found, please contact support"})
 		return
 	}
@@ -93,7 +93,7 @@ func UpdateCartItem(c *gin.Context) {
 	// Check if item exists in cart
 	var existingCartItem models.CartItem
 	itemExists := database.DB.
-		Where("cart_id = ? AND product_id = ?", cart.ID, req.ProductID).
+		Where("\"cartId\" = ? AND \"productId\" = ?", cart.ID, req.ProductID).
 		First(&existingCartItem).Error == nil
 
 	if req.Action == "add" {

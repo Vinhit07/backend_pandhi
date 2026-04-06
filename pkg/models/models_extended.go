@@ -32,19 +32,20 @@ func (j JSONArray) Value() (driver.Value, error) {
 
 // Order model - mirrors Prisma Order model
 type Order struct {
-	ID                int            `gorm:"primaryKey;autoIncrement;column:id" json:"id"`
-	CustomerID        *int           `gorm:"column:customerId" json:"customerId"`
-	OutletID          int            `gorm:"not null;column:outletId" json:"outletId"`
-	TotalAmount       float64        `gorm:"not null;column:totalAmount" json:"totalAmount"`
-	PaymentMethod     PaymentMethod  `gorm:"type:text;not null;column:paymentMethod" json:"paymentMethod"`
-	Status            string         `gorm:"type:text;not null;column:status" json:"status"`
-	CreatedAt         time.Time      `gorm:"autoCreateTime;column:createdAt" json:"createdAt"`
-	Type              OrderType      `gorm:"type:text;not null;column:type" json:"type"`
-	DeliveryDate      *time.Time     `gorm:"column:deliveryDate" json:"deliveryDate"`
-	DeliverySlot      *DeliverySlot  `gorm:"type:text;column:deliverySlot" json:"deliverySlot"`
-	IsPreOrder        bool           `gorm:"default:false;column:isPreOrder" json:"isPreOrder"`
-	RazorpayPaymentID *string        `gorm:"column:razorpayPaymentId" json:"razorpayPaymentId"`
-	DeliveredAt       *time.Time     `gorm:"column:deliveredAt" json:"deliveredAt"`
+	ID                int           `gorm:"primaryKey;autoIncrement;column:id" json:"id"`
+	CustomerID        *int          `gorm:"column:customerId" json:"customerId"`
+	OutletID          int           `gorm:"not null;column:outletId" json:"outletId"`
+	TotalAmount       float64       `gorm:"not null;column:totalAmount" json:"totalAmount"`
+	PaymentMethod     PaymentMethod `gorm:"type:text;not null;column:paymentMethod" json:"paymentMethod"`
+	Status            string        `gorm:"type:text;not null;column:status" json:"status"`
+	CreatedAt         time.Time     `gorm:"autoCreateTime;column:createdAt" json:"createdAt"`
+	Type              OrderType     `gorm:"type:text;not null;column:type" json:"type"`
+	DeliveryDate      *time.Time    `gorm:"column:deliveryDate" json:"deliveryDate"`
+	DeliverySlot      *DeliverySlot `gorm:"type:text;column:deliverySlot" json:"deliverySlot"`
+	IsPreOrder        bool          `gorm:"default:false;column:isPreOrder" json:"isPreOrder"`
+	RazorpayPaymentID *string       `gorm:"column:razorpayPaymentId" json:"razorpayPaymentId"`
+	DeliveredAt       *time.Time    `gorm:"column:deliveredAt" json:"deliveredAt"`
+	Token             *int          `gorm:"column:token" json:"token"`
 
 	// Relationships
 	Customer  *CustomerDetails `gorm:"foreignKey:CustomerID;references:ID" json:"customer,omitempty"`
@@ -80,11 +81,11 @@ func (OrderItem) TableName() string {
 
 // Wallet model - mirrors Prisma Wallet model
 type Wallet struct {
-	ID             int       `gorm:"primaryKey;autoIncrement;column:id" json:"id"`
-	CustomerID     int       `gorm:"unique;not null;column:customerId" json:"customerId"`
-	Balance        float64   `gorm:"default:0;column:balance" json:"balance"`
-	TotalRecharged float64   `gorm:"default:0;column:totalRecharged" json:"totalRecharged"`
-	TotalUsed      float64   `gorm:"default:0;column:totalUsed" json:"totalUsed"`
+	ID             int        `gorm:"primaryKey;autoIncrement;column:id" json:"id"`
+	CustomerID     int        `gorm:"unique;not null;column:customerId" json:"customerId"`
+	Balance        float64    `gorm:"default:0;column:balance" json:"balance"`
+	TotalRecharged float64    `gorm:"default:0;column:totalRecharged" json:"totalRecharged"`
+	TotalUsed      float64    `gorm:"default:0;column:totalUsed" json:"totalUsed"`
 	LastRecharged  *time.Time `gorm:"column:lastRecharged" json:"lastRecharged"`
 	LastOrder      *time.Time `gorm:"column:lastOrder" json:"lastOrder"`
 
@@ -258,8 +259,8 @@ type AdminPermission struct {
 	IsGranted     bool                `gorm:"default:false;column:isGranted" json:"isGranted"`
 
 	// Relationships
-	Admin       *Admin       `gorm:"foreignKey:AdminID;references:ID" json:"admin,omitempty"`
-	AdminOutlet AdminOutlet  `gorm:"foreignKey:AdminOutletID;references:ID" json:"adminOutlet,omitempty"`
+	Admin       *Admin      `gorm:"foreignKey:AdminID;references:ID" json:"admin,omitempty"`
+	AdminOutlet AdminOutlet `gorm:"foreignKey:AdminOutletID;references:ID" json:"adminOutlet,omitempty"`
 }
 
 // TableName specifies the table name for AdminPermission model

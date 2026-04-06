@@ -89,7 +89,7 @@ func Get2FAStatus(c *gin.Context) {
 	}
 
 	var staff models.StaffDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&staff).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&staff).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Staff not found"})
 		return
 	}
@@ -116,7 +116,7 @@ func Generate2FASetup(c *gin.Context) {
 	}
 
 	var staff models.StaffDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&staff).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&staff).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Staff not found"})
 		return
 	}
@@ -178,7 +178,7 @@ func Enable2FA(c *gin.Context) {
 	}
 
 	var staff models.StaffDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&staff).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&staff).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Staff not found"})
 		return
 	}
@@ -247,7 +247,7 @@ func Disable2FA(c *gin.Context) {
 	}
 
 	var staff models.StaffDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&staff).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&staff).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Staff not found"})
 		return
 	}
@@ -305,7 +305,7 @@ func GetBackupCodesCount(c *gin.Context) {
 	}
 
 	var staff models.StaffDetails
-	if err := database.DB.Where("user_id = ?", user.ID).First(&staff).Error; err != nil {
+	if err := database.DB.Where("\"userId\" = ?", user.ID).First(&staff).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Staff not found"})
 		return
 	}

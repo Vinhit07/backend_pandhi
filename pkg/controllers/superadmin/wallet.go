@@ -3,6 +3,7 @@ package superadmin
 import (
 	"backend_pandhi/pkg/database"
 	"backend_pandhi/pkg/models"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -14,16 +15,25 @@ import (
 // GetCustomersWithWallet returns customers with wallet details
 func GetCustomersWithWallet(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, err := strconv.Atoi(outletIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "Provide outletId"})
-		return
+	var outletID int
+	var err error
+
+	query := database.DB.Where("role = ?", models.RoleCustomer).
+		Preload("CustomerInfo.Wallet")
+
+	if outletIDStr != "ALL" {
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Provide outletId"})
+			return
+		}
+		query = query.Where(`"outletId" = ?`, outletID)
+		fmt.Printf("[DEBUG] GetCustomersWithWallet - OutletID: %d\n", outletID)
 	}
 
 	var users []models.User
-	database.DB.Where(`role = ? AND "outletId" = ?`, models.RoleCustomer, outletID).
-		Preload("CustomerInfo.Wallet").
-		Find(&users)
+	query.Find(&users)
+	fmt.Printf("[DEBUG] GetCustomersWithWallet - Found %d users\n", len(users))
 
 	formatted := make([]gin.H, len(users))
 	for i, user := range users {
@@ -72,18 +82,27 @@ func GetCustomersWithWallet(c *gin.Context) {
 // GetRechargeHistoryByOutlet returns recharge history for outlet
 func GetRechargeHistoryByOutlet(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, err := strconv.Atoi(outletIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "Provide outletId"})
-		return
+	var outletID int
+	var err error
+
+	query := database.DB.Where("role = ?", models.RoleCustomer).
+		Preload("CustomerInfo.Wallet.Transactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order(`"createdAt" DESC`)
+		})
+
+	if outletIDStr != "ALL" {
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Provide outletId"})
+			return
+		}
+		query = query.Where(`"outletId" = ?`, outletID)
+		fmt.Printf("[DEBUG] GetRechargeHistoryByOutlet - OutletID: %d\n", outletID)
 	}
 
 	var users []models.User
-	database.DB.Where(`role = ? AND "outletId" = ?`, models.RoleCustomer, outletID).
-		Preload("CustomerInfo.Wallet.Transactions", func(db *gorm.DB) *gorm.DB {
-			return db.Order(`"createdAt" DESC`)
-		}).
-		Find(&users)
+	query.Find(&users)
+	fmt.Printf("[DEBUG] GetRechargeHistoryByOutlet - Found %d users\n", len(users))
 
 	history := []gin.H{}
 	for _, user := range users {
@@ -110,11 +129,28 @@ func GetRechargeHistoryByOutlet(c *gin.Context) {
 
 // GetOrdersPaidViaWallet returns all wallet-paid orders
 func GetOrdersPaidViaWallet(c *gin.Context) {
+	outletIDStr := c.Param("outletId")
+	var outletID int
+	var err error
+
+	fmt.Println("[DEBUG] GetOrdersPaidViaWallet - Start")
 	var orders []models.Order
-	database.DB.Where(`"paymentMethod" = ?`, models.PaymentMethodWallet).
+	query := database.DB.Where(`"paymentMethod" = ?`, models.PaymentMethodWallet).
 		Preload("Customer.User").
-		Order(`"createdAt" DESC`).
-		Find(&orders)
+		Order(`"createdAt" DESC`)
+
+	if outletIDStr != "ALL" && outletIDStr != "" {
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+		query = query.Where(`"outletId" = ?`, outletID)
+		fmt.Printf("[DEBUG] GetOrdersPaidViaWallet - OutletID: %d\n", outletID)
+	}
+
+	query.Find(&orders)
+	fmt.Printf("[DEBUG] GetOrdersPaidViaWallet - Found %d orders\n", len(orders))
 
 	result := make([]gin.H, len(orders))
 	for i, order := range orders {

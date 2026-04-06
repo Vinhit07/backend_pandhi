@@ -4,6 +4,7 @@ import (
 	"backend_pandhi/pkg/database"
 	"backend_pandhi/pkg/models"
 	"backend_pandhi/pkg/services"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -16,12 +17,16 @@ import (
 // GetProducts returns all products for an outlet
 func GetProducts(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, _ := strconv.Atoi(outletIDStr)
+	var outletID int
 
 	var products []models.Product
 	query := database.DB.Preload("Inventory").Order("name ASC")
-	if outletID > 0 {
-		query = query.Where(`"outletId" = ?`, outletID)
+
+	if outletIDStr != "ALL" {
+		outletID, _ = strconv.Atoi(outletIDStr)
+		if outletID > 0 {
+			query = query.Where(`"outletId" = ?`, outletID)
+		}
 	}
 	query.Find(&products)
 
@@ -80,12 +85,36 @@ func AddProduct(c *gin.Context) {
 	}
 	minValue, _ := strconv.Atoi(minValueStr)
 
-	isVeg := true
-	if isVegStr == "false" {
-		isVeg = false
+	// Robust boolean parsing
+	// Debug log
+	fmt.Printf("[DEBUG] AddProduct - isVegStr: '%s', companyPaidStr: '%s'\n", isVegStr, companyPaidStr)
+
+	// Robust boolean parsing
+	isVeg := true // Default
+	if isVegStr != "" {
+		if v, err := strconv.ParseBool(isVegStr); err == nil {
+			isVeg = v
+		} else {
+             // Fallback for manual string check if ParseBool fails (though ParseBool handles "0", "1", "t", "T", "TRUE", "true", "True", "FALSE", "false", "False")
+             lowerVeg := strings.ToLower(isVegStr)
+             if lowerVeg == "false" || lowerVeg == "0" {
+                 isVeg = false
+             }
+		}
 	}
 
-	companyPaid := companyPaidStr == "true"
+	companyPaid := false // Default
+	if companyPaidStr != "" {
+		if v, err := strconv.ParseBool(companyPaidStr); err == nil {
+			companyPaid = v
+		} else {
+             if companyPaidStr == "true" || companyPaidStr == "1" {
+                companyPaid = true
+             }
+        }
+    }
+
+	fmt.Printf("[DEBUG] AddProduct - Parsed isVeg: %v, companyPaid: %v\n", isVeg, companyPaid)
 
 	crtName := strings.ToLower(name)
 
@@ -119,7 +148,7 @@ func AddProduct(c *gin.Context) {
 			OutletID:    outletID,
 			Category:    models.Category(category),
 			MinValue:    &minValue,
-			IsVeg:       isVeg,
+			IsVeg:       &isVeg,
 			CompanyPaid: companyPaid,
 		}
 
@@ -149,13 +178,14 @@ func AddProduct(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusCreated, gin.H{
-		"message": "Product Created",
-		"product": gin.H{
+		"success": true,
+		"data": gin.H{
 			"name":     newProduct.Name,
 			"price":    newProduct.Price,
 			"minValue": newProduct.MinValue,
 			"imageUrl": newProduct.ImageURL,
 		},
+		"message": "Product created successfully",
 	})
 }
 
@@ -174,7 +204,10 @@ func DeleteProduct(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "product(s) deleted successfully"})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Product deleted successfully",
+	})
 }
 
 // UpdateProduct updates product details with image upload
@@ -241,14 +274,21 @@ func UpdateProduct(c *gin.Context) {
 		}
 	}
 
-	isVeg := existingProduct.IsVeg
+	var isVeg bool
+	if existingProduct.IsVeg != nil {
+		isVeg = *existingProduct.IsVeg
+	}
 	if isVegStr != "" {
-		isVeg = isVegStr != "false"
+		if v, err := strconv.ParseBool(isVegStr); err == nil {
+			isVeg = v
+		}
 	}
 
 	companyPaid := existingProduct.CompanyPaid
-	if companyPaidStr == "true" {
-		companyPaid = true
+	if companyPaidStr != "" {
+		if v, err := strconv.ParseBool(companyPaidStr); err == nil {
+			companyPaid = v
+		}
 	}
 
 	// Update in transaction
@@ -261,7 +301,7 @@ func UpdateProduct(c *gin.Context) {
 			"category":    category,
 			"minValue":    minValue,
 			"outletId":    outletID,
-			"isVeg":       isVeg,
+			"isVeg":       &isVeg,
 			"companyPaid": companyPaid,
 		})
 

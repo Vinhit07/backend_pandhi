@@ -12,18 +12,25 @@ import (
 // GetOutletCustomers returns customers for an outlet with wallet and order stats
 func GetOutletCustomers(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, err := strconv.Atoi(outletIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
-		return
+	var outletID int
+	var err error
+
+	query := database.DB.Where("role = ?", models.RoleCustomer).
+		Preload("CustomerInfo.Wallet").
+		Preload("CustomerInfo.Orders")
+
+	if outletIDStr != "ALL" {
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+		query = query.Where(`"outletId" = ?`, outletID)
 	}
 
 	// Get users with customer info
 	var users []models.User
-	database.DB.Where(`"outletId" = ? AND role = ?`, outletID, models.RoleCustomer).
-		Preload("CustomerInfo.Wallet").
-		Preload("CustomerInfo.Orders").
-		Find(&users)
+	query.Find(&users)
 
 	formattedCustomers := make([]gin.H, len(users))
 	for i, user := range users {

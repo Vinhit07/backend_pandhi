@@ -13,20 +13,27 @@ import (
 // OutletTotalOrders returns all orders for an outlet with customer and item details
 func OutletTotalOrders(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, err := strconv.Atoi(outletIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
-		return
+	var outletID int
+	var err error
+
+	query := database.DB.Preload("Customer.User").
+		Preload("Items.Product").
+		Order(`"createdAt" DESC`)
+
+	if outletIDStr != "ALL" {
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+		query = query.Where(`"outletId" = ?`, outletID)
+		log.Printf("🔍 [OutletTotalOrders] Fetching orders for outlet ID: %d", outletID)
+	} else {
+		log.Printf("🔍 [OutletTotalOrders] Fetching orders for ALL outlets")
 	}
 
-	log.Printf("🔍 [OutletTotalOrders] Fetching orders for outlet ID: %d", outletID)
-
 	var orders []models.Order
-	result := database.DB.Where(`"outletId" = ?`, outletID).
-		Preload("Customer.User").
-		Preload("Items.Product").
-		Order(`"createdAt" DESC`).
-		Find(&orders)
+	result := query.Find(&orders)
 
 	if result.Error != nil {
 		log.Printf("❌ [OutletTotalOrders] Database error: %v", result.Error)
@@ -35,7 +42,7 @@ func OutletTotalOrders(c *gin.Context) {
 	}
 
 	log.Printf("📦 [OutletTotalOrders] Found %d orders in database", len(orders))
-	
+
 	if len(orders) == 0 {
 		log.Printf("⚠️  [OutletTotalOrders] No orders found for outlet ID: %d", outletID)
 		c.JSON(http.StatusOK, []gin.H{})
@@ -45,7 +52,7 @@ func OutletTotalOrders(c *gin.Context) {
 	formatted := make([]gin.H, len(orders))
 	for i, order := range orders {
 		log.Printf("🔄 [OutletTotalOrders] Processing order #%d (ID: %d)", i+1, order.ID)
-		
+
 		customerName := "WalkIn"
 		var customerPhone *string
 
@@ -61,12 +68,23 @@ func OutletTotalOrders(c *gin.Context) {
 
 		items := make([]gin.H, len(order.Items))
 		for j, item := range order.Items {
+			// Use Product.Price if UnitPrice is 0 (same logic as staff order history)
+			price := item.UnitPrice
+			log.Printf("   [Item %d] ProductName: %s, UnitPrice: %.2f, Product.ID: %d, Product.Price: %.2f",
+				j, item.Product.Name, item.UnitPrice, item.Product.ID, item.Product.Price)
+
+			if price == 0 && item.Product.ID > 0 {
+				price = item.Product.Price
+				log.Printf("   [Item %d] Using Product.Price fallback: %.2f", j, price)
+			}
+
 			items[j] = gin.H{
 				"productName": item.Product.Name,
 				"quantity":    item.Quantity,
-				"unitPrice":   item.UnitPrice,
-				"totalPrice":  item.UnitPrice * float64(item.Quantity),
+				"unitPrice":   price,
+				"totalPrice":  price * float64(item.Quantity),
 			}
+			log.Printf("   [Item %d] Final item: unitPrice=%.2f, totalPrice=%.2f", j, price, price*float64(item.Quantity))
 		}
 
 		formatted[i] = gin.H{
@@ -85,7 +103,13 @@ func OutletTotalOrders(c *gin.Context) {
 	}
 
 	log.Printf("✅ [OutletTotalOrders] Returning %d formatted orders", len(formatted))
-	log.Printf("📋 [OutletTotalOrders] Sample response: %+v", formatted[0])
+	if len(formatted) > 0 {
+		log.Printf("📋 [OutletTotalOrders] Sample response: %+v", formatted[0])
+	}
 
-	c.JSON(http.StatusOK, formatted)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    formatted,
+		"message": "Orders fetched successfully",
+	})
 }

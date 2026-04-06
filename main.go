@@ -21,6 +21,14 @@ import (
 )
 
 func main() {
+	// Set timezone to IST (Asia/Kolkata) so time.Now() returns IST
+	ist, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		log.Fatal("Failed to load IST timezone:", err)
+	}
+	time.Local = ist
+	log.Println("🕐 Timezone set to IST (Asia/Kolkata)")
+
 	// Load configuration
 	config.LoadConfig()
 
@@ -31,12 +39,11 @@ func main() {
 	}
 	defer database.CloseDatabase()
 
-	// Run migrations (optional - comment out in production if using manual migrations)
-	if config.IsDevelopment() {
-		if err := database.AutoMigrate(); err != nil {
-			log.Printf("⚠️ Failed to run migrations: %v", err)
-		}
-	}
+	// if config.IsDevelopment() {
+	// 	if err := database.AutoMigrate(); err != nil {
+	// 		log.Printf("⚠️ Failed to run migrations: %v", err)
+	// 	}
+	// }
 
 	// Initialize GCP Storage service
 	if err := services.InitGCPStorage(); err != nil {

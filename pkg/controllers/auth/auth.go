@@ -17,23 +17,29 @@ import (
 // CustomerSignup handles customer registration
 func CustomerSignup(c *gin.Context) {
 	var req struct {
-		Name           string `json:"name" binding:"required"`
-		Email          string `json:"email" binding:"required,email"`
-		Password       string `json:"password" binding:"required"`
-		RetypePassword string `json:"retypePassword" binding:"required"`
-		OutletID       int    `json:"outletId" binding:"required"`
-		Phone          string `json:"phone" binding:"required"`
-		YearOfStudy    *int   `json:"yearOfStudy"`
+		Name           string  `json:"name" binding:"required"`
+		Email          string  `json:"email" binding:"required,email"`
+		Password       string  `json:"password" binding:"required"`
+		RetypePassword string  `json:"retypePassword" binding:"required"`
+		OutletID       *int    `json:"outletId"`
+		Phone          *string `json:"phone"`
+		YearOfStudy    *int    `json:"yearOfStudy"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "Name, email, password, retype password, outlet ID, and phone are required"})
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Name, email, password, and retype password are required"})
 		return
 	}
 
 	if req.Password != req.RetypePassword {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "Passwords do not match"})
 		return
+	}
+
+	// Default OutletID to 1 if not provided
+	var outletID int = 1
+	if req.OutletID != nil {
+		outletID = *req.OutletID
 	}
 
 	// Check if user exists
@@ -52,12 +58,13 @@ func CustomerSignup(c *gin.Context) {
 
 	// Create user with customer details, wallet, and cart in a transaction
 	user := models.User{
-		Name:     req.Name,
-		Email:    req.Email,
-		Password: &hashedPassword,
-		Role:     models.RoleCustomer,
-		Phone:    &req.Phone,
-		OutletID: &req.OutletID,
+		Name:       req.Name,
+		Email:      req.Email,
+		Password:   &hashedPassword,
+		Role:       models.RoleCustomer,
+		Phone:      req.Phone,
+		OutletID:   &outletID,
+		IsVerified: true, // Auto-verify customers
 	}
 
 	err = database.DB.Transaction(func(tx *gorm.DB) error {

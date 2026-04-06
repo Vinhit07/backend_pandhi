@@ -31,14 +31,15 @@ func GetSalesTrend(c *gin.Context) {
 
 	from, _ := time.Parse("2006-01-02", req.From)
 	to, _ := time.Parse("2006-01-02", req.To)
+	to = to.Add(24 * time.Hour) // Include the entire end date
 
 	var orders []models.Order
-	database.DB.Where("outlet_id = ? AND created_at >= ? AND created_at <= ? AND status IN ?",
+	database.DB.Where("\"outletId\" = ? AND \"createdAt\" >= ? AND \"createdAt\" < ? AND status IN ?",
 		outletID,
 		from,
 		to,
-		[]models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered},
-	).Select("total_amount, created_at").Find(&orders)
+		[]string{string(models.OrderStatusDelivered), string(models.OrderStatusPartiallyDelivered)},
+	).Select("\"totalAmount\", \"createdAt\"").Find(&orders)
 
 	// Group by date
 	dailyRevenue := make(map[string]float64)
@@ -81,17 +82,20 @@ func GetOrderTypeBreakdown(c *gin.Context) {
 
 	from, _ := time.Parse("2006-01-02", req.From)
 	to, _ := time.Parse("2006-01-02", req.To)
+	to = to.Add(24 * time.Hour) // Include the entire end date
 
 	var appOrders, manualOrders int64
-	database.DB.Model(&models.Order{}).Where("outlet_id = ? AND type = ? AND created_at >= ? AND created_at <= ?",
-		outletID, models.OrderTypeApp, from, to).Count(&appOrders)
-	database.DB.Model(&models.Order{}).Where("outlet_id = ? AND type = ? AND created_at >= ? AND created_at <= ?",
-		outletID, models.OrderTypeManual, from, to).Count(&manualOrders)
+	database.DB.Model(&models.Order{}).Where("\"outletId\" = ? AND type = ? AND \"createdAt\" >= ? AND \"createdAt\" < ?",
+		outletID, string(models.OrderTypeApp), from, to).Count(&appOrders)
+	database.DB.Model(&models.Order{}).Where("\"outletId\" = ? AND type = ? AND \"createdAt\" >= ? AND \"createdAt\" < ?",
+		outletID, string(models.OrderTypeManual), from, to).Count(&manualOrders)
 
-	c.JSON(http.StatusOK, gin.H{
-		"appOrders":    appOrders,
-		"manualOrders": manualOrders,
-	})
+	// Return as array for pie chart compatibility
+	result := []gin.H{
+		{"name": "App Orders", "value": appOrders},
+		{"name": "Manual Orders", "value": manualOrders},
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 // GetNewCustomersTrend returns new customers by date
@@ -115,10 +119,11 @@ func GetNewCustomersTrend(c *gin.Context) {
 
 	from, _ := time.Parse("2006-01-02", req.From)
 	to, _ := time.Parse("2006-01-02", req.To)
+	to = to.Add(24 * time.Hour) // Include the entire end date
 
 	var users []models.User
-	database.DB.Where("outlet_id = ? AND role = ? AND created_at >= ? AND created_at <= ?",
-		outletID, models.RoleCustomer, from, to).Select("created_at").Find(&users)
+	database.DB.Where("\"outletId\" = ? AND role = ? AND \"createdAt\" >= ? AND \"createdAt\" < ?",
+		outletID, string(models.RoleCustomer), from, to).Select("\"createdAt\"").Find(&users)
 
 	// Group by date
 	dailyNewCustomers := make(map[string]int)
@@ -160,19 +165,20 @@ func GetCategoryBreakdown(c *gin.Context) {
 
 	from, _ := time.Parse("2006-01-02", req.From)
 	to, _ := time.Parse("2006-01-02", req.To)
+	to = to.Add(24 * time.Hour) // Include the entire end date
 
 	type CategoryData struct {
-		ProductID int
-		Quantity  int
+		ProductID int `gorm:"column:product_id"`
+		Quantity  int `gorm:"column:quantity"`
 	}
 
 	var categoryData []CategoryData
 	database.DB.Model(&models.OrderItem{}).
-		Select("product_id, SUM(quantity) as quantity").
-		Joins("JOIN orders ON orders.id = order_items.order_id").
-		Where("orders.outlet_id = ? AND orders.created_at >= ? AND orders.created_at <= ? AND orders.status IN ?",
-			outletID, from, to, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}).
-		Group("product_id").
+		Select("\"productId\" as product_id, SUM(quantity) as quantity").
+		Joins("JOIN \"Order\" ON \"Order\".id = \"OrderItem\".\"orderId\"").
+		Where("\"Order\".\"outletId\" = ? AND \"Order\".\"createdAt\" >= ? AND \"Order\".\"createdAt\" < ? AND \"Order\".status IN ?",
+			outletID, from, to, []string{string(models.OrderStatusDelivered), string(models.OrderStatusPartiallyDelivered)}).
+		Group("\"productId\"").
 		Scan(&categoryData)
 
 	// Get product categories
@@ -182,7 +188,9 @@ func GetCategoryBreakdown(c *gin.Context) {
 	}
 
 	var products []models.Product
-	database.DB.Where("id IN ?", productIDs).Select("id, category").Find(&products)
+	if len(productIDs) > 0 {
+		database.DB.Where("id IN ?", productIDs).Select("id, category").Find(&products)
+	}
 
 	productCategoryMap := make(map[int]string)
 	for _, product := range products {
@@ -193,16 +201,19 @@ func GetCategoryBreakdown(c *gin.Context) {
 	categoryTotals := make(map[string]int)
 	for _, data := range categoryData {
 		category := productCategoryMap[data.ProductID]
+		if category == "" {
+			category = "Uncategorized"
+		}
 		categoryTotals[category] += data.Quantity
 	}
 
 	type Result struct {
-		Category   string `json:"category"`
-		OrderCount int    `json:"orderCount"`
+		Name  string `json:"name"`
+		Value int    `json:"value"`
 	}
 	result := []Result{}
 	for category, count := range categoryTotals {
-		result = append(result, Result{Category: category, OrderCount: count})
+		result = append(result, Result{Name: category, Value: count})
 	}
 
 	c.JSON(http.StatusOK, result)
@@ -229,27 +240,28 @@ func GetDeliveryTimeOrders(c *gin.Context) {
 
 	from, _ := time.Parse("2006-01-02", req.From)
 	to, _ := time.Parse("2006-01-02", req.To)
+	to = to.Add(24 * time.Hour) // Include the entire end date
 
 	type SlotData struct {
-		DeliverySlot string
-		Count        int64
+		DeliverySlot string `gorm:"column:delivery_slot"`
+		Count        int64  `gorm:"column:count"`
 	}
 
 	var slotData []SlotData
 	database.DB.Model(&models.Order{}).
-		Select("delivery_slot, COUNT(*) as count").
-		Where("outlet_id = ? AND created_at >= ? AND created_at <= ? AND status IN ? AND delivery_slot IS NOT NULL",
-			outletID, from, to, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}).
-		Group("delivery_slot").
+		Select("\"deliverySlot\" as delivery_slot, COUNT(*) as count").
+		Where("\"outletId\" = ? AND \"createdAt\" >= ? AND \"createdAt\" < ? AND status IN ? AND \"deliverySlot\" IS NOT NULL AND \"deliverySlot\" != ''",
+			outletID, from, to, []string{string(models.OrderStatusDelivered), string(models.OrderStatusPartiallyDelivered)}).
+		Group("\"deliverySlot\"").
 		Scan(&slotData)
 
 	type Result struct {
-		DeliverySlot string `json:"deliverySlot"`
-		OrderCount   int64  `json:"orderCount"`
+		Slot   string `json:"slot"`
+		Orders int64  `json:"orders"`
 	}
 	result := make([]Result, len(slotData))
 	for i, data := range slotData {
-		result[i] = Result{DeliverySlot: data.DeliverySlot, OrderCount: data.Count}
+		result[i] = Result{Slot: data.DeliverySlot, Orders: data.Count}
 	}
 
 	c.JSON(http.StatusOK, result)
@@ -276,22 +288,23 @@ func GetCancellationRefunds(c *gin.Context) {
 
 	from, _ := time.Parse("2006-01-02", req.From)
 	to, _ := time.Parse("2006-01-02", req.To)
+	to = to.Add(24 * time.Hour) // Include the entire end date
 
 	// Get cancelled orders
 	var cancelledOrders []models.Order
-	database.DB.Where("outlet_id = ? AND created_at >= ? AND created_at <= ? AND status IN ?",
-		outletID, from, to, []models.OrderStatus{models.OrderStatusCancelled, models.OrderStatusPartialCancel}).
-		Select("created_at, status").Find(&cancelledOrders)
+	database.DB.Where("\"outletId\" = ? AND \"createdAt\" >= ? AND \"createdAt\" < ? AND status IN ?",
+		outletID, from, to, []string{string(models.OrderStatusCancelled), string(models.OrderStatusPartialCancel)}).
+		Select("\"createdAt\", status").Find(&cancelledOrders)
 
 	// Get refunds
 	var refunds []models.WalletTransaction
 	database.DB.
-		Joins("JOIN wallets ON wallets.id = wallet_transactions.wallet_id").
-		Joins("JOIN customer_details ON customer_details.id = wallets.customer_id").
-		Joins("JOIN users ON users.id = customer_details.user_id").
-		Where("users.outlet_id = ? AND wallet_transactions.status = ? AND wallet_transactions.created_at >= ? AND wallet_transactions.created_at <= ?",
-			outletID, models.WalletTransTypeDeduct, from, to).
-		Select("wallet_transactions.created_at").Find(&refunds)
+		Joins("JOIN \"Wallet\" ON \"Wallet\".id = \"WalletTransaction\".\"walletId\"").
+		Joins("JOIN \"CustomerDetails\" ON \"CustomerDetails\".id = \"Wallet\".\"customerId\"").
+		Joins("JOIN \"User\" ON \"User\".id = \"CustomerDetails\".\"userId\"").
+		Where("\"User\".\"outletId\" = ? AND \"WalletTransaction\".status = ? AND \"WalletTransaction\".\"createdAt\" >= ? AND \"WalletTransaction\".\"createdAt\" < ?",
+			outletID, string(models.WalletTransTypeDeduct), from, to).
+		Select("\"WalletTransaction\".\"createdAt\"").Find(&refunds)
 
 	// Group by date
 	dailyData := make(map[string]struct {
@@ -347,19 +360,20 @@ func GetQuantitySold(c *gin.Context) {
 
 	from, _ := time.Parse("2006-01-02", req.From)
 	to, _ := time.Parse("2006-01-02", req.To)
+	to = to.Add(24 * time.Hour) // Include the entire end date
 
 	type QuantityData struct {
-		ProductID int
-		Quantity  int
+		ProductID int `gorm:"column:product_id"`
+		Quantity  int `gorm:"column:quantity"`
 	}
 
 	var quantityData []QuantityData
 	database.DB.Model(&models.OrderItem{}).
-		Select("product_id, SUM(quantity) as quantity").
-		Joins("JOIN orders ON orders.id = order_items.order_id").
-		Where("orders.outlet_id = ? AND orders.created_at >= ? AND orders.created_at <= ? AND orders.status IN ?",
-			outletID, from, to, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}).
-		Group("product_id").
+		Select("\"productId\" as product_id, SUM(quantity) as quantity").
+		Joins("JOIN \"Order\" ON \"Order\".id = \"OrderItem\".\"orderId\"").
+		Where("\"Order\".\"outletId\" = ? AND \"Order\".\"createdAt\" >= ? AND \"Order\".\"createdAt\" < ? AND \"Order\".status IN ?",
+			outletID, from, to, []string{string(models.OrderStatusDelivered), string(models.OrderStatusPartiallyDelivered)}).
+		Group("\"productId\"").
 		Scan(&quantityData)
 
 	// Get product names

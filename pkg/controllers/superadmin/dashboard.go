@@ -16,52 +16,98 @@ import (
 
 // GetDashboardOverview returns overall statistics
 func GetDashboardOverview(c *gin.Context) {
+	var req struct {
+		From     string `json:"from"`
+		To       string `json:"to"`
+		OutletID int    `json:"outletId"`
+	}
+	// Optional date filtering via POST body
+	c.ShouldBindJSON(&req)
+
+	// Build date filter if provided
+	var dateFilter func(*gorm.DB) *gorm.DB
+	if req.From != "" && req.To != "" {
+		from, _ := time.Parse("2006-01-02", req.From)
+		to, _ := time.Parse("2006-01-02", req.To)
+		to = to.Add(23*time.Hour + 59*time.Minute)
+		dateFilter = func(db *gorm.DB) *gorm.DB {
+			return db.Where(`"createdAt" >= ? AND "createdAt" <= ?`, from, to)
+		}
+	} else {
+		dateFilter = func(db *gorm.DB) *gorm.DB { return db }
+	}
+
 	var totalActiveOutlets int64
-	database.DB.Model(&models.Outlet{}).Where(`"isActive" = ?`, true).Count(&totalActiveOutlets)
+	// Active Stores should be a global count of all business outlets, not filtered by selection
+	activeOutletsQuery := database.DB.Model(&models.Outlet{}).Where(`"isActive" = ?`, true)
+	activeOutletsQuery.Count(&totalActiveOutlets)
 
 	var totalRevenue float64
-	database.DB.Model(&models.Order{}).
-		Where("status IN ?", []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}).
-		Select("COALESCE(SUM(\"totalAmount\"), 0)").Scan(&totalRevenue)
+	revenueQuery := database.DB.Model(&models.Order{}).
+		Scopes(dateFilter).
+		Where("status != ?", models.OrderStatusCancelled)
+
+	if req.OutletID > 0 {
+		revenueQuery = revenueQuery.Where(`"outletId" = ?`, req.OutletID)
+	}
+	revenueQuery.Select("COALESCE(SUM(\"totalAmount\"), 0)").Scan(&totalRevenue)
 
 	var totalCustomers int64
-	database.DB.Model(&models.CustomerDetails{}).Count(&totalCustomers)
+	customerQuery := database.DB.Model(&models.User{}).Where("role = ?", models.RoleCustomer)
+	if req.OutletID > 0 {
+		customerQuery = customerQuery.Where(`"outletId" = ?`, req.OutletID)
+	}
+	customerQuery.Count(&totalCustomers)
 
 	var totalOrders int64
-	database.DB.Model(&models.Order{}).Count(&totalOrders)
-
-	// Top performing outlet
-	type OutletRevenue struct {
-		OutletID    int
-		TotalAmount float64
+	ordersQuery := database.DB.Model(&models.Order{}).Scopes(dateFilter)
+	if req.OutletID > 0 {
+		ordersQuery = ordersQuery.Where(`"outletId" = ?`, req.OutletID)
 	}
-	var topOutlet OutletRevenue
+	ordersQuery.Count(&totalOrders)
+
+	// Top performing outlet - find the outlet with the most revenue
+	type OutletRevenueResult struct {
+		OutletID     int     `gorm:"column:outletId"`
+		TotalRevenue float64 `gorm:"column:total_revenue"`
+	}
+	var topOutlet OutletRevenueResult
 	database.DB.Model(&models.Order{}).
-		Select("\"outletId\", SUM(\"totalAmount\") as \"totalAmount\"").
-		Group("\"outletId\"").
-		Order("\"totalAmount\" DESC").
+		Scopes(dateFilter).
+		Where("status != ?", models.OrderStatusCancelled).
+		Select(`"outletId", COALESCE(SUM("totalAmount"), 0) as total_revenue`).
+		Group(`"outletId"`).
+		Order(`total_revenue DESC`).
 		Limit(1).Scan(&topOutlet)
+
+	fmt.Printf("[DEBUG] Top outlet - OutletID: %d, Revenue: %.2f\n", topOutlet.OutletID, topOutlet.TotalRevenue)
 
 	var topOutletDetails *models.Outlet
 	if topOutlet.OutletID > 0 {
 		topOutletDetails = &models.Outlet{}
 		database.DB.Select("id, name").First(topOutletDetails, topOutlet.OutletID)
+		fmt.Printf("[DEBUG] Top outlet details - Name: %s\n", topOutletDetails.Name)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"totalActiveOutlets":  totalActiveOutlets,
-		"totalRevenue":        totalRevenue,
-		"totalCustomers":      totalCustomers,
-		"totalOrders":         totalOrders,
-		"topPerformingOutlet": topOutletDetails,
+		"success": true,
+		"data": gin.H{
+			"totalActiveOutlets":  totalActiveOutlets,
+			"totalRevenue":        totalRevenue,
+			"totalCustomers":      totalCustomers,
+			"totalOrders":         totalOrders,
+			"topPerformingOutlet": topOutletDetails,
+		},
+		"message": "Dashboard overview fetched successfully",
 	})
 }
 
 // GetRevenueTrend returns daily revenue trend
 func GetRevenueTrend(c *gin.Context) {
 	var req struct {
-		From string `json:"from" binding:"required"`
-		To   string `json:"to" binding:"required"`
+		From     string `json:"from" binding:"required"`
+		To       string `json:"to" binding:"required"`
+		OutletID int    `json:"outletId"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "from and to dates are required"})
@@ -73,13 +119,19 @@ func GetRevenueTrend(c *gin.Context) {
 	to = to.Add(23*time.Hour + 59*time.Minute)
 
 	var orders []struct {
-		TotalAmount float64
-		CreatedAt   time.Time
+		TotalAmount float64   `gorm:"column:totalAmount"`
+		CreatedAt   time.Time `gorm:"column:createdAt"`
 	}
 	database.DB.Model(&models.Order{}).
 		Select("\"totalAmount\", \"createdAt\"").
 		Where("\"createdAt\" >= ? AND \"createdAt\" <= ? AND status IN ?",
 			from, to, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}).
+		Scopes(func(db *gorm.DB) *gorm.DB {
+			if req.OutletID > 0 {
+				return db.Where(`"outletId" = ?`, req.OutletID)
+			}
+			return db
+		}).
 		Find(&orders)
 
 	dailyRevenue := make(map[string]float64)
@@ -99,8 +151,9 @@ func GetRevenueTrend(c *gin.Context) {
 // GetOrderStatusDistribution returns order counts by status
 func GetOrderStatusDistribution(c *gin.Context) {
 	var req struct {
-		From string `json:"from" binding:"required"`
-		To   string `json:"to" binding:"required"`
+		From     string `json:"from" binding:"required"`
+		To       string `json:"to" binding:"required"`
+		OutletID int    `json:"outletId"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "from and to dates are required"})
@@ -112,32 +165,44 @@ func GetOrderStatusDistribution(c *gin.Context) {
 	to = to.Add(23*time.Hour + 59*time.Minute)
 
 	type StatusCount struct {
-		Status models.OrderStatus
-		Count  int64
+		Status string `gorm:"column:status"`
+		Count  int64  `gorm:"column:count"`
 	}
 	var statusCounts []StatusCount
-	database.DB.Model(&models.Order{}).
+	query := database.DB.Model(&models.Order{}).
 		Select("status, COUNT(*) as count").
-		Where("\"createdAt\" >= ? AND \"createdAt\" <= ?", from, to).
-		Group("status").
-		Scan(&statusCounts)
+		Where(`"createdAt" >= ? AND "createdAt" <= ?`, from, to).
+		Group("status")
+
+	if req.OutletID > 0 {
+		query = query.Where(`"outletId" = ?`, req.OutletID)
+	}
+
+	// Enable debug to see raw SQL
+	query = query.Debug()
+	query.Scan(&statusCounts)
+
+	fmt.Printf("[DEBUG] GetOrderStatusDistribution - Found %d status groups\n", len(statusCounts))
+	for _, sc := range statusCounts {
+		fmt.Printf("[DEBUG]   - Status: '%s', Count: %d\n", sc.Status, sc.Count)
+	}
 
 	result := gin.H{
-		"delivered":           int64(0),
-		"pending":             int64(0),
-		"cancelled":           int64(0),
-		"partiallyDelivered":  int64(0),
+		"delivered":          int64(0),
+		"pending":            int64(0),
+		"cancelled":          int64(0),
+		"partiallyDelivered": int64(0),
 	}
 
 	for _, sc := range statusCounts {
 		switch sc.Status {
-		case models.OrderStatusDelivered:
+		case "DELIVERED":
 			result["delivered"] = sc.Count
-		case models.OrderStatusPending:
+		case "PENDING":
 			result["pending"] = sc.Count
-		case models.OrderStatusCancelled:
+		case "CANCELLED":
 			result["cancelled"] = sc.Count
-		case models.OrderStatusPartiallyDelivered:
+		case "PARTIALLY_DELIVERED":
 			result["partiallyDelivered"] = sc.Count
 		}
 	}
@@ -148,8 +213,9 @@ func GetOrderStatusDistribution(c *gin.Context) {
 // GetOrderSourceDistribution returns APP vs MANUAL counts
 func GetOrderSourceDistribution(c *gin.Context) {
 	var req struct {
-		From string `json:"from" binding:"required"`
-		To   string `json:"to" binding:"required"`
+		From     string `json:"from" binding:"required"`
+		To       string `json:"to" binding:"required"`
+		OutletID int    `json:"outletId"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "from and to dates are required"})
@@ -161,15 +227,20 @@ func GetOrderSourceDistribution(c *gin.Context) {
 	to = to.Add(23*time.Hour + 59*time.Minute)
 
 	type TypeCount struct {
-		Type  models.OrderType
-		Count int64
+		Type  string `gorm:"column:type"`
+		Count int64  `gorm:"column:count"`
 	}
 	var typeCounts []TypeCount
-	database.DB.Model(&models.Order{}).
+	query := database.DB.Model(&models.Order{}).
 		Select("type, COUNT(*) as count").
 		Where("\"createdAt\" >= ? AND \"createdAt\" <= ?", from, to).
-		Group("type").
-		Scan(&typeCounts)
+		Group("type")
+
+	if req.OutletID > 0 {
+		query = query.Where(`"outletId" = ?`, req.OutletID)
+	}
+
+	query.Scan(&typeCounts)
 
 	result := gin.H{
 		"appOrders":    int64(0),
@@ -177,9 +248,9 @@ func GetOrderSourceDistribution(c *gin.Context) {
 	}
 
 	for _, tc := range typeCounts {
-		if tc.Type == models.OrderTypeApp {
+		if tc.Type == "APP" {
 			result["appOrders"] = tc.Count
-		} else if tc.Type == models.OrderTypeManual {
+		} else if tc.Type == "MANUAL" {
 			result["manualOrders"] = tc.Count
 		}
 	}
@@ -190,8 +261,9 @@ func GetOrderSourceDistribution(c *gin.Context) {
 // GetTopSellingItems returns top 3 products by quantity
 func GetTopSellingItems(c *gin.Context) {
 	var req struct {
-		From string `json:"from" binding:"required"`
-		To   string `json:"to" binding:"required"`
+		From     string `json:"from" binding:"required"`
+		To       string `json:"to" binding:"required"`
+		OutletID int    `json:"outletId"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "from and to dates are required"})
@@ -203,13 +275,13 @@ func GetTopSellingItems(c *gin.Context) {
 	to = to.Add(23*time.Hour + 59*time.Minute)
 
 	type ProductStats struct {
-		ProductID    int     `json:"productId"`
-		ProductName  string  `json:"productName"`
-		TotalOrders  int     `json:"totalOrders"`
-		TotalRevenue float64 `json:"totalRevenue"`
+		ProductID    int     `gorm:"column:productId" json:"productId"`
+		ProductName  string  `gorm:"column:product_name" json:"productName"`
+		TotalOrders  float64 `gorm:"column:total_orders" json:"totalOrders"`
+		TotalRevenue float64 `gorm:"column:total_revenue" json:"totalRevenue"`
 	}
 	var stats []ProductStats
-	database.DB.Table("\"OrderItem\"").
+	query := database.DB.Table("\"OrderItem\"").
 		Select("\"OrderItem\".\"productId\", \"Product\".name as product_name, SUM(\"OrderItem\".quantity) as total_orders, SUM(\"OrderItem\".quantity * \"OrderItem\".\"unitPrice\") as total_revenue").
 		Joins("JOIN \"Order\" ON \"Order\".id = \"OrderItem\".\"orderId\"").
 		Joins("JOIN \"Product\" ON \"Product\".id = \"OrderItem\".\"productId\"").
@@ -217,8 +289,13 @@ func GetTopSellingItems(c *gin.Context) {
 			from, to, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}).
 		Group("\"OrderItem\".\"productId\", \"Product\".name").
 		Order("total_orders DESC").
-		Limit(3).
-		Scan(&stats)
+		Limit(3)
+
+	if req.OutletID > 0 {
+		query = query.Where(`"Order"."outletId" = ?`, req.OutletID)
+	}
+
+	query.Scan(&stats)
 
 	c.JSON(http.StatusOK, stats)
 }
@@ -226,8 +303,9 @@ func GetTopSellingItems(c *gin.Context) {
 // GetPeakTimeSlots returns order counts by delivery slot
 func GetPeakTimeSlots(c *gin.Context) {
 	var req struct {
-		From string `json:"from" binding:"required"`
-		To   string `json:"to" binding:"required"`
+		From     string `json:"from" binding:"required"`
+		To       string `json:"to" binding:"required"`
+		OutletID int    `json:"outletId"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "from and to dates are required"})
@@ -239,16 +317,21 @@ func GetPeakTimeSlots(c *gin.Context) {
 	to = to.Add(23*time.Hour + 59*time.Minute)
 
 	type SlotCount struct {
-		DeliverySlot string
-		Count        int64
+		DeliverySlot string `gorm:"column:deliverySlot" json:"deliverySlot"`
+		Count        int64  `gorm:"column:count" json:"count"`
 	}
 	var slots []SlotCount
-	database.DB.Model(&models.Order{}).
+	query := database.DB.Model(&models.Order{}).
 		Select("\"deliverySlot\", COUNT(*) as count").
 		Where("\"createdAt\" >= ? AND \"createdAt\" <= ? AND \"deliverySlot\" IS NOT NULL", from, to).
 		Group("\"deliverySlot\"").
-		Order("count DESC").
-		Scan(&slots)
+		Order("count DESC")
+
+	if req.OutletID > 0 {
+		query = query.Where(`"outletId" = ?`, req.OutletID)
+	}
+
+	query.Scan(&slots)
 
 	result := []gin.H{}
 	for _, slot := range slots {
@@ -466,6 +549,7 @@ func GetAdminDetails(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":         admin.ID,
+		"name":       admin.Name,
 		"email":      admin.Email,
 		"phone":      admin.Phone,
 		"aadharUrl":  aadharURL,
@@ -573,7 +657,7 @@ func MapOutletsToAdmin(c *gin.Context) {
 // AssignAdminPermissions assigns permissions to admin for specific outlets
 func AssignAdminPermissions(c *gin.Context) {
 	var req struct {
-		AdminID     int                    `json:"adminId" binding:"required"`
+		AdminID     int             `json:"adminId" binding:"required"`
 		Permissions map[int][]gin.H `json:"permissions" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {

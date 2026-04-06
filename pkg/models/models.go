@@ -4,17 +4,17 @@ import (
 	"time"
 )
 
-// Outlet model - mirrors Prisma Outlet model
+// Outlet model - mirrors Prisma Out let model
 type Outlet struct {
-	ID         int       `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name       string    `gorm:"unique;not null" json:"name"`
-	Address    *string   `json:"address"`
-	Email      *string   `gorm:"unique" json:"email"`
-	IsActive   bool      `gorm:"default:true" json:"isActive"`
-	CreatedAt  time.Time `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt  time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
-	StaffCount int       `gorm:"default:0" json:"staffCount"`
-	Phone      *string   `json:"phone"`
+	ID         int       `gorm:"primaryKey;autoIncrement;column:id" json:"id"`
+	Name       string    `gorm:"unique;not null;column:name" json:"name"`
+	Address    *string   `gorm:"column:address" json:"address"`
+	Email      *string   `gorm:"unique;column:email" json:"email"`
+	IsActive   bool      `gorm:"default:true;column:isActive" json:"isActive"`
+	CreatedAt  time.Time `gorm:"autoCreateTime;column:createdAt" json:"createdAt"`
+	UpdatedAt  time.Time `gorm:"autoUpdateTime;column:updatedAt" json:"updatedAt"`
+	StaffCount int       `gorm:"default:0;column:staffCount" json:"staffCount"`
+	Phone      *string   `gorm:"column:phone" json:"phone"`
 
 	// Relationships
 	Admins                 []AdminOutlet           `gorm:"foreignKey:OutletID" json:"admins,omitempty"`
@@ -49,6 +49,7 @@ type User struct {
 	GoogleID   *string   `gorm:"unique;column:googleId" json:"googleId"`
 	IsVerified bool      `gorm:"default:false;column:isVerified" json:"isVerified"`
 	ImageURL   *string   `gorm:"column:imageUrl" json:"imageUrl"`
+	BadgeID    *string   `gorm:"unique;column:badge_id" json:"badgeId,omitempty"`
 
 	// Relationships
 	CustomerInfo           *CustomerDetails       `gorm:"foreignKey:UserID" json:"customerInfo,omitempty"`
@@ -75,11 +76,11 @@ type CustomerDetails struct {
 	OrderCount  int           `gorm:"default:0;column:orderCount" json:"orderCount"`
 
 	// Relationships
-	User    User      `gorm:"foreignKey:UserID;references:ID" json:"user,omitempty"`
-	Cart    *Cart     `gorm:"foreignKey:CustomerID" json:"cart,omitempty"`
-	Orders  []Order   `gorm:"foreignKey:CustomerID" json:"orders,omitempty"`
-	Tickets []Ticket  `gorm:"foreignKey:CustomerID" json:"tickets,omitempty"`
-	Wallet  *Wallet   `gorm:"foreignKey:CustomerID" json:"wallet,omitempty"`
+	User    User     `gorm:"foreignKey:UserID;references:ID" json:"user,omitempty"`
+	Cart    *Cart    `gorm:"foreignKey:CustomerID" json:"cart,omitempty"`
+	Orders  []Order  `gorm:"foreignKey:CustomerID" json:"orders,omitempty"`
+	Tickets []Ticket `gorm:"foreignKey:CustomerID" json:"tickets,omitempty"`
+	Wallet  *Wallet  `gorm:"foreignKey:CustomerID" json:"wallet,omitempty"`
 }
 
 // TableName specifies the table name for CustomerDetails model
@@ -169,7 +170,7 @@ type Product struct {
 	OutletID              int      `gorm:"not null;column:outletId" json:"outletId"`
 	Category              Category `gorm:"type:text;not null;column:category" json:"category"`
 	MinValue              *int     `gorm:"default:0;column:minValue" json:"minValue"`
-	IsVeg                 bool     `gorm:"default:true;column:isVeg" json:"isVeg"`
+	IsVeg                 *bool    `gorm:"default:true;column:isVeg" json:"isVeg"`
 	RatingSum30d          float64  `gorm:"default:0;column:ratingSum30d" json:"ratingSum30d"`
 	RatingCount30d        int      `gorm:"default:0;column:ratingCount30d" json:"ratingCount30d"`
 	TrendScore            float64  `gorm:"default:0;column:trendScore" json:"trendScore"`
@@ -228,4 +229,18 @@ type StockHistory struct {
 // TableName specifies the table name for StockHistory model
 func (StockHistory) TableName() string {
 	return "StockHistory"
+}
+
+// Badge model represents the prestored badges matching the user's manual DB schema
+type Badge struct {
+	ID        string    `gorm:"primaryKey;column:id" json:"id"` // This is the 12-digit string
+	Email     string    `gorm:"unique;not null;column:email" json:"email"`
+	Phone     *string   `gorm:"column:phone" json:"phone"`
+	IsClaimed bool      `gorm:"default:false;column:is_claimed" json:"isClaimed"`
+	CreatedAt time.Time `gorm:"autoCreateTime;column:created_at" json:"createdAt"`
+}
+
+// TableName specifies the table name for Badge model
+func (Badge) TableName() string {
+	return "badges"
 }

@@ -3,6 +3,7 @@ package superadmin
 import (
 	"backend_pandhi/pkg/database"
 	"backend_pandhi/pkg/models"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,9 +12,25 @@ import (
 )
 
 // GetOutletSalesReport returns sales by product
+// GetOutletSalesReport returns sales by product
 func GetOutletSalesReport(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, _ := strconv.Atoi(outletIDStr)
+	var outletID int
+
+	// Default query conditions
+	whereClause := `"Order"."createdAt" >= ? AND "Order"."createdAt" <= ? AND "Order".status IN (?, ?)`
+	args := []interface{}{}
+
+	if outletIDStr != "ALL" {
+		var err error
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+		whereClause += ` AND "Order"."outletId" = ?`
+		args = append(args, outletID)
+	}
 
 	var req struct {
 		From string `json:"from" binding:"required"`
@@ -27,21 +44,38 @@ func GetOutletSalesReport(c *gin.Context) {
 	from, _ := time.Parse("2006-01-02", req.From)
 	to, _ := time.Parse("2006-01-02", req.To)
 
+	// Prepend dates and status to args
+	args = append([]interface{}{from, to, models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}, args...)
+
 	type SalesData struct {
-		ProductID   int     `json:"productId"`
-		ProductName string  `json:"productName"`
-		TotalOrders int     `json:"totalOrders"`
-		Quantity    int     `json:"quantity"`
-		Revenue     float64 `json:"revenue"`
+		ProductID   int     `gorm:"column:productId" json:"productId"`
+		ProductName string  `gorm:"column:productName" json:"productName"`
+		Category    string  `gorm:"column:category" json:"category"`
+		TotalOrders int     `gorm:"column:totalOrders" json:"totalOrders"`
+		Quantity    int     `gorm:"column:quantity" json:"quantity"`
+		Revenue     float64 `gorm:"column:revenue" json:"revenue"`
 	}
 	var sales []SalesData
-	database.DB.Table(`"OrderItem"`).Select(`"OrderItem"."productId", "Product".name as product_name, COUNT(DISTINCT "OrderItem"."orderId") as total_orders, SUM("OrderItem".quantity) as quantity, SUM("OrderItem".quantity * "OrderItem"."unitPrice") as revenue`).
-		Joins(`JOIN "Order" ON "Order".id = "OrderItem"."orderId"`).
-		Joins(`JOIN "Product" ON "Product".id = "OrderItem"."productId"`).
-		Where(`"Order"."outletId" = ? AND "Order"."createdAt" >= ? AND "Order"."createdAt" <= ? AND "Order".status IN ?`,
-			outletID, from, to, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}).
-		Group(`"OrderItem"."productId", "Product".name`).
-		Scan(&sales)
+
+	err := database.DB.Raw(`
+		SELECT 
+			"OrderItem"."productId" as "productId",
+			"Product".name as "productName",
+			COALESCE("Product".category, 'Uncategorized') as "category",
+			COUNT(DISTINCT "OrderItem"."orderId") as "totalOrders",
+			SUM("OrderItem".quantity) as "quantity",
+			SUM("OrderItem".quantity * "OrderItem"."unitPrice") as "revenue"
+		FROM "OrderItem"
+		JOIN "Order" ON "Order".id = "OrderItem"."orderId"
+		JOIN "Product" ON "Product".id = "OrderItem"."productId"
+		WHERE `+whereClause+`
+		GROUP BY "OrderItem"."productId", "Product".name, "Product".category
+	`, args...).Scan(&sales).Error
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, sales)
 }
@@ -49,7 +83,22 @@ func GetOutletSalesReport(c *gin.Context) {
 // GetOutletRevenueByItems returns revenue by product
 func GetOutletRevenueByItems(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, _ := strconv.Atoi(outletIDStr)
+	var outletID int
+
+	query := database.DB.Table(`"OrderItem"`).
+		Select(`"OrderItem"."productId", "Product".name as productName, SUM("OrderItem".quantity * "OrderItem"."unitPrice") as revenue`).
+		Joins(`JOIN "Order" ON "Order".id = "OrderItem"."orderId"`).
+		Joins(`JOIN "Product" ON "Product".id = "OrderItem"."productId"`)
+
+	if outletIDStr != "ALL" {
+		var err error
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+		query = query.Where(`"Order"."outletId" = ?`, outletID)
+	}
 
 	var req struct {
 		From string `json:"from" binding:"required"`
@@ -69,11 +118,9 @@ func GetOutletRevenueByItems(c *gin.Context) {
 		Revenue     float64 `json:"revenue"`
 	}
 	var revenue []RevenueData
-	database.DB.Table(`"OrderItem"`).Select(`"OrderItem"."productId", "Product".name as product_name, SUM("OrderItem".quantity * "OrderItem"."unitPrice") as revenue`).
-		Joins(`JOIN "Order" ON "Order".id = "OrderItem"."orderId"`).
-		Joins(`JOIN "Product" ON "Product".id = "OrderItem"."productId"`).
-		Where(`"Order"."outletId" = ? AND "Order"."createdAt" >= ? AND "Order"."createdAt" <= ? AND "Order".status IN ?`,
-			outletID, from, to, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}).
+
+	query.Where(`"Order"."createdAt" >= ? AND "Order"."createdAt" <= ? AND "Order".status IN ?`,
+		from, to, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}).
 		Group(`"OrderItem"."productId", "Product".name`).
 		Scan(&revenue)
 
@@ -81,9 +128,20 @@ func GetOutletRevenueByItems(c *gin.Context) {
 }
 
 // GetRevenueSplit returns revenue by type (APP, MANUAL, WALLET)
+// GetRevenueSplit returns revenue by type (APP, MANUAL, WALLET)
 func GetRevenueSplit(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, _ := strconv.Atoi(outletIDStr)
+	var outletID int
+	isAll := outletIDStr == "ALL"
+
+	if !isAll {
+		var err error
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+	}
 
 	var req struct {
 		From string `json:"from" binding:"required"`
@@ -97,23 +155,44 @@ func GetRevenueSplit(c *gin.Context) {
 	from, _ := time.Parse("2006-01-02", req.From)
 	to, _ := time.Parse("2006-01-02", req.To)
 
+	// App Order Revenue
+	appQuery := database.DB.Model(&models.Order{}).
+		Where(`type = ? AND status IN ? AND "createdAt" >= ? AND "createdAt" <= ?`,
+			models.OrderTypeApp, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}, from, to)
+
+	if !isAll {
+		appQuery = appQuery.Where(`"outletId" = ?`, outletID)
+	}
 	var appOrderRevenue float64
-	database.DB.Model(&models.Order{}).
-		Where(`"outletId" = ? AND type = ? AND status IN ? AND "createdAt" >= ? AND "createdAt" <= ?`,
-			outletID, models.OrderTypeApp, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}, from, to).
-		Select(`COALESCE(SUM("totalAmount"), 0)`).Scan(&appOrderRevenue)
+	appQuery.Select(`COALESCE(SUM("totalAmount"), 0)`).Scan(&appOrderRevenue)
 
+	// Manual Order Revenue
+	manualQuery := database.DB.Model(&models.Order{}).
+		Where(`type = ? AND status IN ? AND "createdAt" >= ? AND "createdAt" <= ?`,
+			models.OrderTypeManual, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}, from, to)
+
+	if !isAll {
+		manualQuery = manualQuery.Where(`"outletId" = ?`, outletID)
+	}
 	var manualOrderRevenue float64
-	database.DB.Model(&models.Order{}).
-		Where(`"outletId" = ? AND type = ? AND status IN ? AND "createdAt" >= ? AND "createdAt" <= ?`,
-			outletID, models.OrderTypeManual, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}, from, to).
-		Select(`COALESCE(SUM("totalAmount"), 0)`).Scan(&manualOrderRevenue)
+	manualQuery.Select(`COALESCE(SUM("totalAmount"), 0)`).Scan(&manualOrderRevenue)
 
+	// Wallet Recharge Revenue (User -> WalletTransaction)
+	// Wallet transactions are linked to wallets, which are linked to users, who have outletId.
+	// Join WalletTransaction -> Wallet -> CustomerDetails -> User
 	var walletRechargeRevenue float64
-	database.DB.Model(&models.WalletTransaction{}).
-		Where(`status = ? AND "createdAt" >= ? AND "createdAt" <= ?`,
-			models.WalletTransTypeRecharge, from, to).
-		Select(`COALESCE(SUM(amount), 0)`).Scan(&walletRechargeRevenue)
+	walletQuery := database.DB.Table(`"WalletTransaction"`).
+		Joins(`JOIN "Wallet" ON "Wallet".id = "WalletTransaction"."walletId"`).
+		Joins(`JOIN "CustomerDetails" ON "CustomerDetails".id = "Wallet"."customerId"`).
+		Joins(`JOIN "User" ON "User".id = "CustomerDetails"."userId"`).
+		Where(`"WalletTransaction".status = ? AND "WalletTransaction"."createdAt" >= ? AND "WalletTransaction"."createdAt" <= ?`,
+			models.WalletTransTypeRecharge, from, to)
+
+	if !isAll {
+		walletQuery = walletQuery.Where(`"User"."outletId" = ?`, outletID)
+	}
+
+	walletQuery.Select(`COALESCE(SUM("WalletTransaction".amount), 0)`).Scan(&walletRechargeRevenue)
 
 	totalRevenue := appOrderRevenue + manualOrderRevenue + walletRechargeRevenue
 
@@ -128,7 +207,22 @@ func GetRevenueSplit(c *gin.Context) {
 // GetWalletRechargeByDay returns daily wallet recharge revenue
 func GetWalletRechargeByDay(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, _ := strconv.Atoi(outletIDStr)
+	var outletID int
+
+	query := database.DB.Table(`"WalletTransaction"`).Select(`"WalletTransaction"."createdAt", "WalletTransaction".amount`).
+		Joins(`JOIN "Wallet" ON "Wallet".id = "WalletTransaction"."walletId"`).
+		Joins(`JOIN "CustomerDetails" ON "CustomerDetails".id = "Wallet"."customerId"`).
+		Joins(`JOIN "User" ON "User".id = "CustomerDetails"."userId"`)
+
+	if outletIDStr != "ALL" {
+		var err error
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+		query = query.Where(`"User"."outletId" = ?`, outletID)
+	}
 
 	var req struct {
 		From string `json:"from" binding:"required"`
@@ -147,12 +241,9 @@ func GetWalletRechargeByDay(c *gin.Context) {
 		Amount    float64
 	}
 	var recharges []DailyRecharge
-	database.DB.Table(`"WalletTransaction"`).Select(`"createdAt", amount`).
-		Joins(`JOIN "Wallet" ON "Wallet".id = "WalletTransaction"."walletId"`).
-		Joins(`JOIN "CustomerDetails" ON "CustomerDetails".id = "Wallet"."customerId"`).
-		Joins(`JOIN "User" ON "User".id = "CustomerDetails"."userId"`).
-		Where(`"User"."outletId" = ? AND "WalletTransaction".status = ? AND "WalletTransaction"."createdAt" >= ? AND "WalletTransaction"."createdAt" <= ?`,
-			outletID, models.WalletTransTypeRecharge, from, to).
+
+	query.Where(`"WalletTransaction".status = ? AND "WalletTransaction"."createdAt" >= ? AND "WalletTransaction"."createdAt" <= ?`,
+		models.WalletTransTypeRecharge, from, to).
 		Scan(&recharges)
 
 	dailyRevenue := make(map[string]float64)
@@ -172,7 +263,17 @@ func GetWalletRechargeByDay(c *gin.Context) {
 // GetProfitLossTrends returns monthly profit/loss for a year
 func GetProfitLossTrends(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, _ := strconv.Atoi(outletIDStr)
+	var outletID int
+	isAll := outletIDStr == "ALL"
+
+	if !isAll {
+		var err error
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+	}
 
 	var req struct {
 		Year int `json:"year" binding:"required"`
@@ -187,25 +288,40 @@ func GetProfitLossTrends(c *gin.Context) {
 
 	// Get orders
 	var orders []struct {
-		TotalAmount float64
-		CreatedAt   time.Time
+		TotalAmount float64   `gorm:"column:totalAmount"`
+		CreatedAt   time.Time `gorm:"column:createdAt"`
 	}
-	database.DB.Model(&models.Order{}).
+	ordersQuery := database.DB.Model(&models.Order{}).
 		Select(`"totalAmount", "createdAt"`).
-		Where(`"outletId" = ? AND status IN ? AND "createdAt" >= ? AND "createdAt" <= ?`,
-			outletID, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}, yearStart, yearEnd).
-		Scan(&orders)
+		Where(`status::text IN (?,?) AND "createdAt" >= ? AND "createdAt" <= ?`,
+			models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered, yearStart, yearEnd)
+
+	if !isAll {
+		ordersQuery = ordersQuery.Where(`"outletId" = ?`, outletID)
+	}
+	ordersQuery.Scan(&orders)
 
 	// Get expenses
 	var expenses []struct {
-		Amount    float64
-		CreatedAt time.Time
+		Amount    float64   `gorm:"column:amount"`
+		CreatedAt time.Time `gorm:"column:createdAt"`
 	}
-	database.DB.Model(&models.Expense{}).
+	expensesQuery := database.DB.Model(&models.Expense{}).
 		Select(`amount, "createdAt"`).
-		Where(`"outletId" = ? AND "createdAt" >= ? AND "createdAt" <= ?`,
-			outletID, yearStart, yearEnd).
-		Scan(&expenses)
+		Where(`"createdAt" >= ? AND "createdAt" <= ?`, yearStart, yearEnd)
+
+	if !isAll {
+		expensesQuery = expensesQuery.Where(`"outletId" = ?`, outletID)
+	}
+	expensesQuery.Scan(&expenses)
+
+	// DEBUG LOGS
+	fmt.Printf("💰 PROFIT/LOSS DEBUG: OutletID=%d, Year=%d\n", outletID, req.Year)
+	fmt.Printf("🔍 Orders Found: %d\n", len(orders))
+	fmt.Printf("🔍 Expenses Found: %d\n", len(expenses))
+	if len(orders) > 0 {
+		fmt.Printf("📝 Sample Order: Amount=%.2f, Date=%s\n", orders[0].TotalAmount, orders[0].CreatedAt)
+	}
 
 	// Aggregate by month
 	monthly := make(map[int]gin.H)
@@ -225,10 +341,10 @@ func GetProfitLossTrends(c *gin.Context) {
 
 	for _, exp := range expenses {
 		month := int(exp.CreatedAt.Month())
-		expenses := monthly[month]["expenses"].(float64)
+		expensesVal := monthly[month]["expenses"].(float64)
 		monthly[month] = gin.H{
 			"sales":    monthly[month]["sales"],
-			"expenses": expenses + exp.Amount,
+			"expenses": expensesVal + exp.Amount,
 			"profit":   monthly[month]["profit"],
 		}
 	}
@@ -236,8 +352,8 @@ func GetProfitLossTrends(c *gin.Context) {
 	result := []gin.H{}
 	for m := 1; m <= 12; m++ {
 		sales := monthly[m]["sales"].(float64)
-		expenses := monthly[m]["expenses"].(float64)
-		profit := sales - expenses
+		expensesVal := monthly[m]["expenses"].(float64)
+		profit := sales - expensesVal
 		status := "profit"
 		if profit < 0 {
 			status = "loss"
@@ -245,7 +361,7 @@ func GetProfitLossTrends(c *gin.Context) {
 		result = append(result, gin.H{
 			"month":    m,
 			"sales":    sales,
-			"expenses": expenses,
+			"expenses": expensesVal,
 			"profit":   profit,
 			"status":   status,
 		})
@@ -257,7 +373,17 @@ func GetProfitLossTrends(c *gin.Context) {
 // GetCustomerOverview returns new vs returning customers
 func GetCustomerOverview(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, _ := strconv.Atoi(outletIDStr)
+	var outletID int
+	isAll := outletIDStr == "ALL"
+
+	if !isAll {
+		var err error
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+	}
 
 	var req struct {
 		From string `json:"from" binding:"required"`
@@ -273,9 +399,12 @@ func GetCustomerOverview(c *gin.Context) {
 
 	// Get orders in period
 	var orders []models.Order
-	database.DB.Where(`"outletId" = ? AND "createdAt" >= ? AND "createdAt" <= ? AND "customerId" IS NOT NULL`,
-		outletID, from, to).
-		Find(&orders)
+	query := database.DB.Where(`"createdAt" >= ? AND "createdAt" <= ? AND "customerId" IS NOT NULL`, from, to)
+
+	if !isAll {
+		query = query.Where(`"outletId" = ?`, outletID)
+	}
+	query.Find(&orders)
 
 	customerIDs := make(map[int]bool)
 	for _, order := range orders {
@@ -286,26 +415,56 @@ func GetCustomerOverview(c *gin.Context) {
 
 	newCount := 0
 	returningCount := 0
+	newRevenue := 0.0
+	returningRevenue := 0.0
+
 	for customerID := range customerIDs {
+		// Determine if new or returning (has prior order)
 		var priorOrder models.Order
 		err := database.DB.Where(`"customerId" = ? AND "createdAt" < ?`, customerID, from).First(&priorOrder).Error
-		if err == nil {
+		isReturning := err == nil
+
+		if isReturning {
 			returningCount++
 		} else {
 			newCount++
 		}
+
+		// Calculate revenue for this customer in the current period from the 'orders' slice
+		// We can filter the 'orders' slice we already fetched
+		for _, order := range orders {
+			if order.CustomerID != nil && *order.CustomerID == customerID {
+				if isReturning {
+					returningRevenue += order.TotalAmount
+				} else {
+					newRevenue += order.TotalAmount
+				}
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"newCustomers":       newCount,
-		"returningCustomers": returningCount,
+		"newCustomers":             newCount,
+		"returningCustomers":       returningCount,
+		"newCustomerRevenue":       newRevenue,
+		"returningCustomerRevenue": returningRevenue,
 	})
 }
 
 // GetCustomerPerOrder returns customers per order by day
 func GetCustomerPerOrder(c *gin.Context) {
 	outletIDStr := c.Param("outletId")
-	outletID, _ := strconv.Atoi(outletIDStr)
+	var outletID int
+	isAll := outletIDStr == "ALL"
+
+	if !isAll {
+		var err error
+		outletID, err = strconv.Atoi(outletIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid outlet ID"})
+			return
+		}
+	}
 
 	var req struct {
 		From string `json:"from" binding:"required"`
@@ -320,9 +479,13 @@ func GetCustomerPerOrder(c *gin.Context) {
 	to, _ := time.Parse("2006-01-02", req.To)
 
 	var orders []models.Order
-	database.DB.Where(`"outletId" = ? AND "createdAt" >= ? AND "createdAt" <= ? AND "customerId" IS NOT NULL AND status IN ?`,
-		outletID, from, to, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered}).
-		Find(&orders)
+	query := database.DB.Where(`"createdAt" >= ? AND "createdAt" <= ? AND "customerId" IS NOT NULL AND status IN ?`,
+		from, to, []models.OrderStatus{models.OrderStatusDelivered, models.OrderStatusPartiallyDelivered})
+
+	if !isAll {
+		query = query.Where(`"outletId" = ?`, outletID)
+	}
+	query.Find(&orders)
 
 	grouped := make(map[string]map[int]bool)
 	orderCounts := make(map[string]int)

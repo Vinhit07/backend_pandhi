@@ -15,6 +15,15 @@ func RegisterAuthRoutes(router *gin.RouterGroup) {
 		authGroup.POST("/signup", auth.CustomerSignup)
 		authGroup.POST("/signin", auth.CustomerSignIn)
 
+		// OTP passwordless auth
+		authGroup.POST("/send-otp", auth.SendOTP)
+		authGroup.POST("/verify-otp", auth.VerifyOTPHandler)
+
+		// Badge Auth
+		authGroup.POST("/verify-badge", auth.VerifyBadge)
+		authGroup.POST("/verify-badge-otp", auth.VerifyBadgeOTP)
+		authGroup.POST("/profile-setup", auth.ProfileSetup)
+
 		// Staff auth
 		authGroup.POST("/staff-signup", auth.StaffSignup) // TODO: Add uploadDocuments middleware
 		authGroup.POST("/staff-signin", auth.StaffSignIn)

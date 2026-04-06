@@ -34,7 +34,7 @@ func AddManualOrder(c *gin.Context) {
 	for _, item := range req.Items {
 		var inventory models.Inventory
 		if err := database.DB.
-			Where("outlet_id = ? AND product_id = ?", req.OutletID, item.ProductID).
+			Where("\"outletId\" = ? AND \"productId\" = ?", req.OutletID, item.ProductID).
 			First(&inventory).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{
 				"message": "Inventory not found for product ID " + string(rune(item.ProductID)),
@@ -56,6 +56,43 @@ func AddManualOrder(c *gin.Context) {
 		today := time.Now().Truncate(24 * time.Hour)
 		now := time.Now()
 
+		// Fetch products to identify company-paid beverages
+		productIDs := make([]int, len(req.Items))
+		for i, item := range req.Items {
+			productIDs[i] = item.ProductID
+		}
+
+		var products []models.Product
+		if err := tx.Where("id IN ?", productIDs).Find(&products).Error; err != nil {
+			return err
+		}
+
+		productMap := make(map[int]models.Product)
+		for _, p := range products {
+			productMap[p.ID] = p
+		}
+
+		companyPaidBeverageQty := 0
+		for _, item := range req.Items {
+			if product, ok := productMap[item.ProductID]; ok {
+				if product.CompanyPaid && product.Category == models.CategoryBeverages {
+					companyPaidBeverageQty += item.Quantity
+				}
+			}
+		}
+
+		// Calculate cumulative token safely
+		var token *int
+		if companyPaidBeverageQty > 0 {
+			tx.Exec("LOCK TABLE \"Order\" IN EXCLUSIVE MODE")
+			var maxToken int
+			if err := tx.Model(&models.Order{}).Select("COALESCE(MAX(token), 0)").Scan(&maxToken).Error; err != nil {
+				return err
+			}
+			nextToken := maxToken + companyPaidBeverageQty
+			token = &nextToken
+		}
+
 		order := models.Order{
 			OutletID:      req.OutletID,
 			TotalAmount:   req.TotalAmount,
@@ -66,6 +103,7 @@ func AddManualOrder(c *gin.Context) {
 			DeliveryDate:  &today,
 			IsPreOrder:    false,
 			DeliveredAt:   &now,
+			Token:         token,
 		}
 
 		if err := tx.Create(&order).Error; err != nil {
@@ -85,7 +123,7 @@ func AddManualOrder(c *gin.Context) {
 
 			// Deduct inventory
 			tx.Model(&models.Inventory{}).
-				Where("outlet_id = ? AND product_id = ?", req.OutletID, item.ProductID).
+				Where("\"outletId\" = ? AND \"productId\" = ?", req.OutletID, item.ProductID).
 				Update("quantity", gorm.Expr("quantity - ?", item.Quantity))
 		}
 
@@ -116,7 +154,7 @@ func GetProducts(c *gin.Context) {
 
 	// Fetch products with inventory > 0
 	var inventories []models.Inventory
-	database.DB.Where("outlet_id = ? AND quantity > 0", outletID).
+	database.DB.Where("\"outletId\" = ? AND quantity > 0", outletID).
 		Preload("Product").
 		Find(&inventories)
 
